@@ -2,7 +2,6 @@ const express = require('express');
 const {
   PB_API_BASE,
   PB_AUTH_COLLECTION,
-  createClient,
   getAuthorizationRecord,
   getUserSettingsRecord,
   maskToken,
@@ -11,6 +10,18 @@ const {
 } = require('../pocketbase');
 const { mapUserSettingsRecordToSettings } = require('../lib/session');
 const { getFirstAuthorizedRoute, renderSignin } = require('../lib/render');
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
 
 function createAuthRouter() {
   const router = express.Router();
@@ -48,6 +59,8 @@ function createAuthRouter() {
       const features = normalizeFeatures(authorizationRecord.features);
       const redirectTo = getFirstAuthorizedRoute(features);
 
+      await regenerateSession(req);
+
       req.session.auth = {
         token: client.authStore.token,
         user: {
@@ -66,11 +79,12 @@ function createAuthRouter() {
           tokenPreview: maskToken(client.authStore.token),
         },
       };
+
       req.session.ui = {
-        ...(req.session.ui || {}),
         settings: mapUserSettingsRecordToSettings(userSettingsRecord),
       };
-      req.session.chat = req.session.chat || { messages: [] };
+
+      req.session.chat = { messages: [] };
 
       if (isFetchRequest) {
         return res.json({ ok: true, redirect: redirectTo });
