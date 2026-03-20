@@ -56,6 +56,7 @@ function renderRoute(req, res, route) {
     tenant: req.session.tenant || null,
     todos: req.todosPage?.todos || null,
     selectedTodo: req.todosPage?.selectedTodo || null,
+    isNewTodo: req.todosPage?.isNewTodo || false,
   });
 
   res.render('layout', {
