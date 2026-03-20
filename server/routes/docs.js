@@ -5,16 +5,22 @@ const { renderNotFound, renderRoute } = require('../lib/render');
 function createDocsRouter() {
   const router = express.Router();
 
-  const ensureSignedIn = (req, res) => {
+  const ensureDocsAccess = (req, res) => {
     if (!req.session.auth?.token) {
       res.redirect('/signin');
       return false;
     }
+
+    if (!req.session.auth?.authorization?.features?.docs) {
+      res.redirect('/home');
+      return false;
+    }
+
     return true;
   };
 
   router.get('/docs', (req, res) => {
-    if (!ensureSignedIn(req, res)) return;
+    if (!ensureDocsAccess(req, res)) return;
 
     req.docsPage = {
       docsList: listDocs(),
@@ -24,7 +30,7 @@ function createDocsRouter() {
   });
 
   router.get('/docs/:slug', (req, res) => {
-    if (!ensureSignedIn(req, res)) return;
+    if (!ensureDocsAccess(req, res)) return;
 
     const selectedDoc = getDocBySlug(req.params.slug);
     if (!selectedDoc) {

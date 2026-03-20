@@ -16,6 +16,7 @@ const DEFAULT_FEATURES = {
   channels: false,
   settings: false,
   profile: false,
+  docs: false,
 };
 
 function createClient(token) {
