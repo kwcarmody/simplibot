@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SimpliBot Interface</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="./node_modules/@iconscout/unicons/css/line.css" />
+    <link rel="stylesheet" href="./css/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <div id="mobile-header-brand" class="mobile-header-brand" aria-label="Pikori">
+        <div class="mobile-header-mark">
+          <svg viewBox="0 0 40 48" fill="none" aria-hidden="true"><path d="M1.278 27.136c-.019-2.147 2.3-4.5 2.284-7.093s-.028-5.33-.028-8.217a18.024 18.024 0 0 1 .5-4.164 9.359 9.359 0 0 1 1.915-3.831 9.936 9.936 0 0 1 3.942-2.776C11.575.356 22.18 0 24.882 0a23.09 23.09 0 0 1 5.386.611 11.729 11.729 0 0 1 4.5 2.11 10.594 10.594 0 0 1 3.109 4 14.682 14.682 0 0 1 1.166 6.218 14.357 14.357 0 0 1-1.277 6.44c-.851 1.7-1.717 3.406-3.4 4.364s-2.023 1.534-5.758 1.8-12.909.611-15.463.611H11.252q-.944 0-2.11-.111s-7.842 3.247-7.864 1.1ZM33.488 12.825a7.189 7.189 0 0 0-2.082-5.608q-2.082-1.888-6.912-1.888c-1.221 0-10.679.1-11.549.305A4.745 4.745 0 0 0 10.807 6.69a4.558 4.558 0 0 0-1.249 2.027 10.548 10.548 0 0 0-.416 3.22c0 .22-.1 3.551 0 4.292.932 3.3 1.9 3.774 6.5 4.017 3.53.116 5.719 0 6.644 0 8.34.009 9.747-1.484 10.376-2.539a10.876 10.876 0 0 0 .832-4.882Z" fill="#6984ed" stroke="#6984ed" stroke-width="1"/><path d="M11.784 0c6.51 0 11.655.183 11.788 2.806S18.294 5.611 11.784 5.611.208 5.748 0 2.805 5.273 0 11.784 0Z" transform="translate(10.359 36.596)" fill="#6984ed"/></svg>
+        </div>
+        <div class="mobile-header-title">Pikori</div>
+      </div>
+      <button id="mobile-menu-toggle" class="mobile-menu-toggle" type="button" aria-label="Open menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <button id="mobile-menu-overlay" class="mobile-menu-overlay" type="button" aria-label="Close menu"></button>
+      <aside id="sidebar" class="sidebar"></aside>
+      <main class="main-panel">
+        <div id="view" class="view-frame"></div>
+      </main>
+      <aside id="todo-flyout" class="todo-flyout"></aside>
+    </div>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
+    <script src="./js/app.bundle.js"></script>
+  </body>
+</html>
