@@ -11,6 +11,11 @@ function createDocsRouter() {
       return false;
     }
 
+    if (!req.session.tenant?.id) {
+      res.redirect('/home');
+      return false;
+    }
+
     if (!req.session.auth?.authorization?.features?.docs) {
       res.redirect('/home');
       return false;

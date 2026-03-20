@@ -220,3 +220,11 @@ This file provides static defaults and mock data for:
 Important note:
 
 `server/data.js` is a fallback/default source, not the source of truth for authenticated persisted settings.
+
+## Tenant-Aware Protected Flow
+
+Protected app routes should require both:
+- an authenticated user session
+- an active tenant session context
+
+The active tenant is resolved during sign-in and stored in `req.session.tenant`.
