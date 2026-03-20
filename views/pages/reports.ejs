@@ -1,0 +1,33 @@
+<section class="page-shell">
+  <header class="page-header">
+    <div>
+      <h1>Reports</h1>
+      <p class="page-subtitle">Search static report definitions and run placeholder actions that can be wired to the backend later.</p>
+    </div>
+    <div class="page-badge"><%= visibleReports.length %> reports</div>
+  </header>
+
+  <form class="toolbar" method="get" action="/reports">
+    <div class="search-field">
+      <span class="search-icon" aria-hidden="true"><i class="uil uil-search"></i></span>
+      <input name="reportSearch" class="form-control" placeholder="Search reports" value="<%= filters.reportSearch %>" />
+    </div>
+  </form>
+
+  <div class="report-grid">
+    <% visibleReports.forEach((report) => { %>
+      <article class="report-card">
+        <div class="muted-label">Report</div>
+        <h2 class="h5 mt-2"><%= report.title %></h2>
+        <p class="report-description"><%= report.description %></p>
+        <div class="card-footer-row">
+          <button class="btn btn-sm btn-secondary-global" type="button">Run</button>
+          <a class="tool-config-button" href="/reports?<%= new URLSearchParams({ reportSearch: filters.reportSearch, configureReport: report.id }).toString() %>">
+            <span>Configure</span>
+            <i class="uil uil-setting"></i>
+          </a>
+        </div>
+      </article>
+    <% }) %>
+  </div>
+</section>

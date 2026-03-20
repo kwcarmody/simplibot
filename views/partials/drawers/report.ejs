@@ -1,0 +1,37 @@
+<div class="drawer-header">
+  <div class="d-flex align-items-start justify-content-between gap-3">
+    <div>
+      <div class="muted-label">Report Settings</div>
+      <h2 class="h4 mt-2 mb-1"><%= selectedReportConfig.title %></h2>
+      <div class="text-secondary small"><%= selectedReportConfig.description %></div>
+    </div>
+    <a class="btn btn-sm btn-secondary-global" href="/reports">Close</a>
+  </div>
+</div>
+<div class="drawer-body mt-4">
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Audience</label>
+      <input class="form-control" value="<%= selectedReportConfig.config.audience %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Output</label>
+      <input class="form-control" value="<%= selectedReportConfig.config.output %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Frequency</label>
+      <input class="form-control" value="<%= selectedReportConfig.config.frequency %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-4">
+    <div class="w-100">
+      <label class="form-label">Notes</label>
+      <textarea class="form-control" rows="5"><%= selectedReportConfig.config.notes %></textarea>
+    </div>
+  </div>
+  <button class="btn btn-light" type="button">Run Report</button>
+</div>

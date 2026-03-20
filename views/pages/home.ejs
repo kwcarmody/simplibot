@@ -1,0 +1,39 @@
+<section class="page-shell">
+  <header class="page-header">
+    <div>
+      <h1>Agentic Home</h1>
+      <p class="page-subtitle">
+        A lightweight control surface for tasks, tools, reports, and channels. Everything on this screen
+        is powered by local mock data so backend integration can drop in later.
+      </p>
+    </div>
+    <div class="page-badge">Frontend-only preview</div>
+  </header>
+
+  <section class="stats-grid">
+    <% [["Active ToDos", stats.activeTodos], ["Enabled Tools", stats.enabledTools], ["Messages Today", stats.messagesToday], ["Active Channels", stats.activeChannels]].forEach(([label, value]) => { %>
+      <article class="stat-card">
+        <div class="muted-label"><%= label %></div>
+        <div class="stat-value"><%= value %></div>
+      </article>
+    <% }) %>
+  </section>
+
+  <section>
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <div class="muted-label">Quick Actions</div>
+        <h2 class="h4 mb-0 mt-2">Jump straight into the work</h2>
+      </div>
+    </div>
+    <div class="action-grid">
+      <% actions.forEach((item) => { %>
+        <a class="action-card" href="<%= item.route %>">
+          <div class="action-icon"><i class="<%= item.icon %>"></i></div>
+          <h3 class="h5"><%= item.title %></h3>
+          <p class="tool-description mb-0"><%= item.description %></p>
+        </a>
+      <% }) %>
+    </div>
+  </section>
+</section>

@@ -1,0 +1,46 @@
+<div class="drawer-header">
+  <div class="d-flex align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <div class="muted-label">Memory Drawer</div>
+      <h2 class="h4 mt-2 mb-1">Manage Memories</h2>
+      <div class="text-secondary small"><%= memoryResults.length %> visible</div>
+    </div>
+    <a class="btn btn-sm btn-secondary-global" href="/settings">Close</a>
+  </div>
+  <form class="toolbar" method="get" action="/settings">
+    <input type="hidden" name="drawer" value="memory" />
+    <div class="search-field">
+      <span class="search-icon" aria-hidden="true"><i class="uil uil-search"></i></span>
+      <input name="memorySearch" class="form-control" placeholder="Search memories" value="<%= memoryFilters.search %>" />
+    </div>
+    <select name="memoryType" class="form-select" style="max-width: 170px;" onchange="this.form.submit()">
+      <% ["All", "Preference", "Profile", "Workflow", "Product"].forEach((type) => { %>
+        <option value="<%= type %>" <%= memoryFilters.type === type ? 'selected' : '' %>><%= type %></option>
+      <% }) %>
+    </select>
+  </form>
+</div>
+<div class="drawer-body mt-4">
+  <div class="memory-list">
+    <% if (memoryResults.length) { %>
+      <% memoryResults.forEach((memory) => { %>
+        <article class="memory-item">
+          <div class="memory-item-body">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="muted-label"><%= memory.id %></span>
+              <span class="status-label-disabled"><%= memory.type %></span>
+            </div>
+            <h3 class="h6 mt-2 mb-1"><%= memory.title %></h3>
+            <div class="memory-copy"><%= memory.content %></div>
+            <div class="text-secondary small mt-2">Saved <%= memory.savedAt %></div>
+          </div>
+          <div class="memory-item-footer">
+            <button class="btn btn-sm btn-danger-secondary" type="button">Delete</button>
+          </div>
+        </article>
+      <% }) %>
+    <% } else { %>
+      <div class="empty-state">No memories match the current search and filter.</div>
+    <% } %>
+  </div>
+</div>

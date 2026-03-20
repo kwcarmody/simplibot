@@ -1,0 +1,37 @@
+<div class="d-flex align-items-center gap-3 mb-4">
+  <div class="d-flex align-items-center gap-3 min-w-0">
+    <div class="brand-mark"><%- brandMark %></div>
+    <div class="brand-copy">
+      <div class="fw-semibold">Pikori</div>
+      <div class="text-secondary small">Agentic Control Surface</div>
+    </div>
+  </div>
+</div>
+
+<nav class="d-flex flex-column">
+  <% navItems.forEach((item) => { %>
+    <a class="sidebar-button <%= route === item.id ? 'active' : '' %>" href="<%= item.href %>">
+      <span class="icon"><i class="<%= item.icon %>"></i></span>
+      <span class="nav-label"><%= item.label %></span>
+    </a>
+  <% }) %>
+</nav>
+
+<div class="sidebar-footer pt-4">
+  <a class="surface-card sidebar-user" href="/profile">
+    <div class="sidebar-avatar">KC</div>
+    <div class="footer-copy">
+      <div class="fw-semibold"><%= profile.fullName %></div>
+      <div class="text-secondary small"><%= profile.role %></div>
+    </div>
+  </a>
+  <div class="sidebar-footer-actions">
+    <a class="sidebar-button" href="/logout">
+      <span class="icon"><i class="uil uil-signout"></i></span>
+      <span class="nav-label">Sign out</span>
+    </a>
+  </div>
+  <button class="sidebar-button collapse-control" type="button" aria-label="Collapse menu">
+    <span class="icon"><i class="uil uil-angle-left"></i></span>
+  </button>
+</div>

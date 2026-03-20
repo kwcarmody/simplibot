@@ -1,0 +1,30 @@
+{
+  "name": "simplibot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "echo \"No tests configured\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kwcarmody/simplibot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/kwcarmody/simplibot/issues"
+  },
+  "homepage": "https://github.com/kwcarmody/simplibot#readme",
+  "dependencies": {
+    "@iconscout/unicons": "^4.2.0",
+    "ejs": "^5.0.1",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "pocketbase": "^0.26.8"
+  }
+}

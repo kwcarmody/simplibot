@@ -1,0 +1,31 @@
+<section class="page-shell">
+  <header class="page-header">
+    <div>
+      <h1>Channels</h1>
+      <p class="page-subtitle">Manage static messaging endpoints and test enable or disable states for outbound workflows.</p>
+    </div>
+    <div class="page-badge"><%= channels.filter((item) => item.enabled).length %> enabled</div>
+  </header>
+
+  <div class="channel-grid">
+    <% channels.forEach((channel) => { %>
+      <article class="channel-card">
+        <div class="channel-row">
+          <div>
+            <h2 class="h5 mb-1"><%= channel.title %></h2>
+            <p class="channel-description mb-0"><%= channel.description %></p>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" <%= channel.enabled ? 'checked' : '' %> />
+          </div>
+        </div>
+        <div class="card-footer-row">
+          <a class="tool-config-button" href="/channels?<%= new URLSearchParams({ configureChannel: channel.id }).toString() %>">
+            <span>Configure</span>
+            <i class="uil uil-setting"></i>
+          </a>
+        </div>
+      </article>
+    <% }) %>
+  </div>
+</section>

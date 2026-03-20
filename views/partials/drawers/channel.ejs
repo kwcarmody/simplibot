@@ -1,0 +1,46 @@
+<div class="drawer-header">
+  <div class="d-flex align-items-start justify-content-between gap-3">
+    <div>
+      <div class="muted-label">Channel Settings</div>
+      <h2 class="h4 mt-2 mb-1"><%= selectedChannelConfig.title %></h2>
+      <div class="text-secondary small"><%= selectedChannelConfig.description %></div>
+    </div>
+    <a class="btn btn-sm btn-secondary-global" href="/channels">Close</a>
+  </div>
+</div>
+<div class="drawer-body mt-4">
+  <div class="toggle-row mb-3">
+    <div>
+      <div class="fw-semibold">Enabled</div>
+      <div class="settings-help small">Preview current delivery readiness.</div>
+    </div>
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" <%= selectedChannelConfig.enabled ? 'checked' : '' %> />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Endpoint</label>
+      <input class="form-control" value="<%= selectedChannelConfig.config.endpoint %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Identity</label>
+      <input class="form-control" value="<%= selectedChannelConfig.config.identity %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Delivery</label>
+      <input class="form-control" value="<%= selectedChannelConfig.config.delivery %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-4">
+    <div class="w-100">
+      <label class="form-label">Notes</label>
+      <textarea class="form-control" rows="5"><%= selectedChannelConfig.config.notes %></textarea>
+    </div>
+  </div>
+  <button class="btn btn-light" type="button">Save</button>
+</div>

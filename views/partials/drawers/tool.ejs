@@ -1,0 +1,46 @@
+<div class="drawer-header">
+  <div class="d-flex align-items-start justify-content-between gap-3">
+    <div>
+      <div class="muted-label">Tool Settings</div>
+      <h2 class="h4 mt-2 mb-1"><%= selectedToolConfig.title %></h2>
+      <div class="text-secondary small"><%= selectedToolConfig.description %></div>
+    </div>
+    <a class="btn btn-sm btn-secondary-global" href="/tools">Close</a>
+  </div>
+</div>
+<div class="drawer-body mt-4">
+  <div class="toggle-row mb-3">
+    <div>
+      <div class="fw-semibold">Enabled</div>
+      <div class="settings-help small">Static configuration preview.</div>
+    </div>
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" <%= selectedToolConfig.enabled ? 'checked' : '' %> />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Endpoint</label>
+      <input class="form-control" value="<%= selectedToolConfig.config.endpoint %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Scope</label>
+      <input class="form-control" value="<%= selectedToolConfig.config.scope %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Refresh</label>
+      <input class="form-control" value="<%= selectedToolConfig.config.refresh %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-4">
+    <div class="w-100">
+      <label class="form-label">Notes</label>
+      <textarea class="form-control" rows="5"><%= selectedToolConfig.config.notes %></textarea>
+    </div>
+  </div>
+  <button class="btn btn-light w-100" type="button">Save</button>
+</div>

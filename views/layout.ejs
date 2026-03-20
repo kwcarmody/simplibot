@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= title %></title>
+    <script>
+      (() => {
+        try {
+          if (window.localStorage.getItem("pikori.sidebar.minimized") === "true") {
+            document.documentElement.classList.add("sidebar-minimized");
+          }
+        } catch (error) {}
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+    <link rel="stylesheet" href="/node_modules/@iconscout/unicons/css/line.css" />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell <%= isAuthPage ? 'auth-mode' : '' %>">
+      <% if (!isAuthPage) { %>
+        <div class="mobile-header-brand" aria-label="Pikori">
+          <div class="mobile-header-mark"><%- brandMark %></div>
+          <div class="mobile-header-title">Pikori</div>
+        </div>
+        <button id="mobile-menu-toggle" class="mobile-menu-toggle" type="button" aria-label="Open menu">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <button id="mobile-menu-overlay" class="mobile-menu-overlay" type="button" aria-label="Close menu"></button>
+        <aside id="sidebar" class="sidebar">
+          <%- include("partials/sidebar") %>
+        </aside>
+      <% } %>
+      <main class="main-panel">
+        <div id="view" class="view-frame">
+          <%- include(pageTemplate) %>
+        </div>
+      </main>
+      <% if (!isAuthPage) { %>
+        <aside id="todo-flyout" class="todo-flyout <%= selectedTodo || selectedToolConfig || selectedReportConfig || selectedChannelConfig || showMemoryDrawer ? 'open' : '' %>">
+          <% if (selectedTodo) { %>
+            <%- include("partials/drawers/todo") %>
+          <% } else if (selectedToolConfig) { %>
+            <%- include("partials/drawers/tool") %>
+          <% } else if (selectedReportConfig) { %>
+            <%- include("partials/drawers/report") %>
+          <% } else if (selectedChannelConfig) { %>
+            <%- include("partials/drawers/channel") %>
+          <% } else if (showMemoryDrawer) { %>
+            <%- include("partials/drawers/memory") %>
+          <% } %>
+        </aside>
+      <% } %>
+    </div>
+    <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const app = document.querySelector("#app");
+        const sidebar = document.querySelector("#sidebar");
+        const view = document.querySelector("#view");
+        const flyout = document.querySelector("#todo-flyout");
+        const toggle = document.querySelector("#mobile-menu-toggle");
+        const overlay = document.querySelector("#mobile-menu-overlay");
+        const collapseControl = document.querySelector(".collapse-control");
+        const SIDEBAR_MINIMIZED_KEY = "pikori.sidebar.minimized";
+        const syncMenuState = () => {
+          if (!app || !toggle) {
+            return;
+          }
+
+          const isOpen = app.classList.contains("mobile-menu-open");
+          toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        };
+
+        const closeMenu = () => {
+          if (!app) {
+            return;
+          }
+
+          app.classList.remove("mobile-menu-open");
+          syncMenuState();
+        };
+
+        const markActiveSidebarLink = (pathname) => {
+          if (!sidebar) {
+            return;
+          }
+
+          sidebar.querySelectorAll(".sidebar-button[href]").forEach((link) => {
+            const href = link.getAttribute("href");
+            const isActive = href === pathname;
+            link.classList.toggle("active", isActive);
+          });
+        };
+
+        const swapViewFromHtml = (html, url) => {
+          if (!view) {
+            window.location.assign(url);
+            return;
+          }
+
+          const parser = new DOMParser();
+          const nextDocument = parser.parseFromString(html, "text/html");
+          const nextView = nextDocument.querySelector("#view");
+          const nextFlyout = nextDocument.querySelector("#todo-flyout");
+
+          if (!nextView) {
+            window.location.assign(url);
+            return;
+          }
+
+          view.innerHTML = nextView.innerHTML;
+          document.title = nextDocument.title || document.title;
+          markActiveSidebarLink(new URL(url, window.location.origin).pathname);
+
+          if (flyout) {
+            if (nextFlyout) {
+              flyout.className = nextFlyout.className;
+              flyout.innerHTML = nextFlyout.innerHTML;
+            } else {
+              flyout.className = "todo-flyout";
+              flyout.innerHTML = "";
+            }
+          }
+
+          initializePageFeatures();
+        };
+
+        const fetchAndSwapView = async (url) => {
+          const response = await fetch(url, {
+            headers: {
+              "X-Pikori-Partial": "view",
+            },
+            credentials: "same-origin",
+          });
+
+          if (!response.ok) {
+            throw new Error(`Navigation failed with ${response.status}.`);
+          }
+
+          const html = await response.text();
+          swapViewFromHtml(html, url);
+          window.history.pushState({ url }, "", url);
+          closeMenu();
+        };
+
+        if (app && toggle && overlay) {
+          toggle.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            app.classList.toggle("mobile-menu-open");
+            syncMenuState();
+          });
+
+          overlay.addEventListener("click", closeMenu);
+
+          document.querySelectorAll("#sidebar a").forEach((link) => {
+            link.addEventListener("click", closeMenu);
+          });
+        }
+
+        if (sidebar && view) {
+          sidebar.addEventListener("click", async (event) => {
+            const link = event.target.closest(".sidebar-button[href]");
+            if (!link) {
+              return;
+            }
+
+            const href = link.getAttribute("href");
+            if (!href || href === "/logout") {
+              return;
+            }
+
+            if (
+              event.defaultPrevented ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey ||
+              link.target === "_blank"
+            ) {
+              return;
+            }
+
+            const nextUrl = new URL(href, window.location.origin);
+            if (nextUrl.origin !== window.location.origin) {
+              return;
+            }
+
+            event.preventDefault();
+
+            try {
+              await fetchAndSwapView(nextUrl.pathname + nextUrl.search);
+            } catch (error) {
+              window.location.assign(nextUrl.pathname + nextUrl.search);
+            }
+          });
+        }
+
+        if (sidebar) {
+          const isMinimized = document.documentElement.classList.contains("sidebar-minimized");
+          sidebar.classList.toggle("minimized", isMinimized);
+          requestAnimationFrame(() => {
+            sidebar.classList.add("sidebar-ready");
+          });
+        }
+
+        if (sidebar && collapseControl) {
+          collapseControl.addEventListener("click", () => {
+            const isMinimized = sidebar.classList.toggle("minimized");
+            document.documentElement.classList.toggle("sidebar-minimized", isMinimized);
+            window.localStorage.setItem(SIDEBAR_MINIMIZED_KEY, isMinimized ? "true" : "false");
+          });
+        }
+
+        const toastRoot = document.querySelector("#toast-root");
+        window.showToast = (message, variant = "success") => {
+          if (!toastRoot || !message) {
+            return;
+          }
+
+          const toast = document.createElement("div");
+          toast.className = `app-toast app-toast-${variant}`;
+          toast.textContent = message;
+          toastRoot.appendChild(toast);
+
+          requestAnimationFrame(() => {
+            toast.classList.add("is-visible");
+          });
+
+          window.setTimeout(() => {
+            toast.classList.remove("is-visible");
+            window.setTimeout(() => toast.remove(), 220);
+          }, 2600);
+        };
+
+        const initializePageFeatures = () => {
+        const signinForm = document.querySelector("#signin-form");
+        if (signinForm) {
+          signinForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            if (signinForm.dataset.submitting === "true") {
+              return;
+            }
+
+            const signinButton = signinForm.querySelector("#signin-button");
+            const label = signinButton?.querySelector(".signin-button-label");
+            const spinner = signinButton?.querySelector(".auth-button-spinner");
+            const errorBox = signinForm.closest(".auth-card")?.querySelector("#signin-error");
+            const originalLabel = label?.textContent || "Sign In";
+
+            signinForm.dataset.submitting = "true";
+            if (signinButton) {
+              signinButton.disabled = true;
+              signinButton.classList.add("is-loading");
+            }
+            if (label) {
+              label.textContent = "Signing In...";
+            }
+            if (spinner) {
+              spinner.style.display = "inline-block";
+            }
+            if (errorBox) {
+              errorBox.textContent = "";
+              errorBox.classList.add("d-none");
+            }
+
+            try {
+              const response = await fetch(signinForm.action, {
+                method: "POST",
+                headers: {
+                  "X-Pikori-Auth": "fetch",
+                },
+                body: new URLSearchParams(new FormData(signinForm)),
+                credentials: "same-origin",
+              });
+              const data = await response.json();
+
+              if (response.ok && data.redirect) {
+                window.location.assign(data.redirect);
+                return;
+              }
+
+              throw new Error(data.error || "Sign in failed.");
+            } catch (error) {
+              if (errorBox) {
+                errorBox.textContent = error.message || "Sign in failed.";
+                errorBox.classList.remove("d-none");
+              }
+              signinForm.dataset.submitting = "false";
+              if (signinButton) {
+                signinButton.disabled = false;
+                signinButton.classList.remove("is-loading");
+              }
+              if (label) {
+                label.textContent = originalLabel;
+              }
+              if (spinner) {
+                spinner.style.display = "none";
+              }
+            }
+          });
+        }
+
+        const modelProviderSelect = document.querySelector("[data-model-provider]");
+        const updateModelSettingsUI = () => {
+          if (!modelProviderSelect) {
+            return;
+          }
+
+          const provider = modelProviderSelect.value;
+          document.querySelectorAll("[data-model-provider-section]").forEach((section) => {
+            const matches = section.dataset.modelProviderSection === provider;
+            section.classList.toggle("d-none", !matches);
+            section.querySelectorAll("input, select, textarea").forEach((field) => {
+              field.disabled = !matches;
+            });
+          });
+        };
+
+        if (modelProviderSelect) {
+          modelProviderSelect.addEventListener("change", updateModelSettingsUI);
+          updateModelSettingsUI();
+        }
+
+        const modelSettingsForm = document.querySelector("#model-settings-form");
+        if (modelSettingsForm) {
+          modelSettingsForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const saveButton = modelSettingsForm.querySelector("#model-settings-save");
+            const errorBox = modelSettingsForm.querySelector("#model-settings-error");
+            const formData = new FormData(modelSettingsForm);
+            const provider = String(formData.get("provider") || "").trim();
+            const model = String(formData.get("model") || "").trim();
+            const endpoint = String(formData.get("endpoint") || "").trim();
+            const apiKey = String(formData.get("apiKey") || "").trim();
+
+            if (errorBox) {
+              errorBox.textContent = "";
+              errorBox.classList.add("d-none");
+            }
+
+            const validationError = (() => {
+              if (provider === "None") {
+                return "Choose a provider before saving model settings.";
+              }
+              if (!model) {
+                return "Choose a model before saving.";
+              }
+              if (!endpoint) {
+                return "API Endpoint is required.";
+              }
+              if (provider === "Ollama-Cloud" && !apiKey) {
+                return "API Token is required for cloud models.";
+              }
+              return "";
+            })();
+
+            if (validationError) {
+              if (errorBox) {
+                errorBox.textContent = validationError;
+                errorBox.classList.remove("d-none");
+              }
+              window.showToast(validationError, "error");
+              return;
+            }
+
+            if (saveButton) {
+              saveButton.disabled = true;
+              saveButton.textContent = "Saving...";
+            }
+
+            try {
+              const response = await fetch(modelSettingsForm.action, {
+                method: "POST",
+                headers: {
+                  "X-Requested-With": "fetch",
+                },
+                body: new URLSearchParams(formData),
+                credentials: "same-origin",
+              });
+              const data = await response.json();
+
+              if (!response.ok || !data.ok) {
+                throw new Error(data.error || "Model connection failed.");
+              }
+
+              window.showToast("Model connected.", "success");
+            } catch (error) {
+              const message = error.message || "Model connection failed.";
+              if (errorBox) {
+                errorBox.textContent = message;
+                errorBox.classList.remove("d-none");
+              }
+              window.showToast("Model connection failed.", "error");
+            } finally {
+              if (saveButton) {
+                saveButton.disabled = false;
+                saveButton.textContent = "Save";
+              }
+            }
+          });
+        }
+
+        const LOCAL_MEMORY_KEY = "pikori.memories";
+        const memoryDefaults = {
+          enabled: false,
+          maxSize: 100,
+          userName: "User",
+          userDescription: "",
+          botName: "Pikori",
+          botDescription: "You're a helpful robot assistant.",
+        };
+
+        const readLocalMemories = () => {
+          try {
+            const raw = window.localStorage.getItem(LOCAL_MEMORY_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+          } catch (error) {
+            return [];
+          }
+        };
+
+        const updateMemoryCountUI = () => {
+          const count = readLocalMemories().length;
+          document.querySelectorAll("[data-memory-count]").forEach((node) => {
+            node.textContent = String(count);
+          });
+        };
+
+        updateMemoryCountUI();
+
+        const memorySettingsForm = document.querySelector("#memory-settings-form");
+        if (memorySettingsForm) {
+          const getMemoryPayload = () => ({
+            enabled: memorySettingsForm.querySelector("[name='enabled']")?.checked || false,
+            maxSize: memorySettingsForm.querySelector("[name='maxSize']")?.value || "",
+            userName: memorySettingsForm.querySelector("[name='userName']")?.value?.trim() || "",
+            userDescription: memorySettingsForm.querySelector("[name='userDescription']")?.value?.trim() || "",
+            botName: memorySettingsForm.querySelector("[name='botName']")?.value?.trim() || "",
+            botDescription: memorySettingsForm.querySelector("[name='botDescription']")?.value?.trim() || "",
+          });
+
+          const setMemoryFormValues = (values) => {
+            const enabledField = memorySettingsForm.querySelector("[name='enabled']");
+            const maxSizeField = memorySettingsForm.querySelector("[name='maxSize']");
+            const userNameField = memorySettingsForm.querySelector("[name='userName']");
+            const userDescriptionField = memorySettingsForm.querySelector("[name='userDescription']");
+            const botNameField = memorySettingsForm.querySelector("[name='botName']");
+            const botDescriptionField = memorySettingsForm.querySelector("[name='botDescription']");
+
+            if (enabledField) enabledField.checked = Boolean(values.enabled);
+            if (maxSizeField) maxSizeField.value = values.maxSize;
+            if (userNameField) userNameField.value = values.userName;
+            if (userDescriptionField) userDescriptionField.value = values.userDescription;
+            if (botNameField) botNameField.value = values.botName;
+            if (botDescriptionField) botDescriptionField.value = values.botDescription;
+          };
+
+          const saveMemorySettings = async (payload, successMessage = "Memory settings saved.") => {
+            const saveButton = memorySettingsForm.querySelector("#memory-settings-save");
+            const errorBox = memorySettingsForm.querySelector("#memory-settings-error");
+            const params = new URLSearchParams();
+
+            params.set("enabled", payload.enabled ? "true" : "false");
+            params.set("maxSize", String(payload.maxSize || ""));
+            params.set("userName", payload.userName || "");
+            params.set("userDescription", payload.userDescription || "");
+            params.set("botName", payload.botName || "");
+            params.set("botDescription", payload.botDescription || "");
+
+            if (errorBox) {
+              errorBox.textContent = "";
+              errorBox.classList.add("d-none");
+            }
+
+            if (saveButton) {
+              saveButton.disabled = true;
+              saveButton.textContent = "Saving...";
+            }
+
+            try {
+              const response = await fetch(memorySettingsForm.action, {
+                method: "POST",
+                headers: {
+                  "X-Requested-With": "fetch",
+                },
+                body: params,
+                credentials: "same-origin",
+              });
+              const data = await response.json();
+
+              if (!response.ok || !data.ok) {
+                throw new Error(data.error || "Memory settings could not be saved.");
+              }
+
+              window.showToast(successMessage, "success");
+              return true;
+            } catch (error) {
+              const message = error.message || "Memory settings could not be saved.";
+              if (errorBox) {
+                errorBox.textContent = message;
+                errorBox.classList.remove("d-none");
+              }
+              window.showToast(message, "error");
+              return false;
+            } finally {
+              if (saveButton) {
+                saveButton.disabled = false;
+                saveButton.textContent = "Save";
+              }
+            }
+          };
+
+          memorySettingsForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await saveMemorySettings(getMemoryPayload());
+          });
+
+          const memoryDeleteConfirm = document.querySelector("#memory-delete-confirm");
+          if (memoryDeleteConfirm) {
+            memoryDeleteConfirm.addEventListener("click", async () => {
+              window.localStorage.removeItem(LOCAL_MEMORY_KEY);
+              updateMemoryCountUI();
+              setMemoryFormValues(memoryDefaults);
+
+              const didSave = await saveMemorySettings(memoryDefaults, "Memory settings restored.");
+              if (didSave) {
+                const modalEl = document.querySelector("#memory-delete-modal");
+                const modal = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+                modal?.hide();
+              }
+            });
+          }
+        }
+
+        const chatThread = document.querySelector("#chat-thread");
+        const chatForm = document.querySelector("#chat-form");
+        if (chatThread && chatForm) {
+          const chatInput = chatForm.querySelector("#chat-message-input");
+          const sendButton = chatForm.querySelector(".btn.chat-icon-button");
+          const chatBadge = document.querySelector(".page-shell.chat-page .page-badge");
+          const newSessionButton = document.querySelector("#new-session-button");
+          const userName = chatThread.dataset.userName || "User";
+          const botName = chatThread.dataset.botName || "Pikori";
+
+          const escapeHtml = (value) =>
+            String(value || "")
+              .replaceAll("&", "&amp;")
+              .replaceAll("<", "&lt;")
+              .replaceAll(">", "&gt;")
+              .replaceAll('"', "&quot;")
+              .replaceAll("'", "&#39;");
+
+          const scrollChatToBottom = () => {
+            requestAnimationFrame(() => {
+              const panel = document.querySelector(".chat-panel");
+              if (panel) {
+                panel.scrollTop = panel.scrollHeight;
+              }
+            });
+          };
+
+          const renderChatMessage = (message) => `
+            <div class="message-row ${escapeHtml(message.role)}">
+              <div class="message-bubble">
+                <div class="message-meta-row">
+                  <div class="message-meta">${escapeHtml(message.author)} • ${escapeHtml(message.time)}</div>
+                  <button class="btn memory-icon-button" type="button" title="Save to memory." aria-label="Save to memory">
+                    <i class="uil uil-brain"></i>
+                  </button>
+                </div>
+                <div>${escapeHtml(message.text)}</div>
+              </div>
+            </div>
+          `;
+
+          const renderThinkingBubble = (author) => `
+            <div class="message-row assistant message-row-loading" data-chat-loading>
+              <div class="message-bubble">
+                <div class="message-meta-row">
+                  <div class="message-meta">${escapeHtml(author)} • ${escapeHtml(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }))}</div>
+                  <button class="btn memory-icon-button" type="button" title="Save to memory." aria-label="Save to memory" disabled>
+                    <i class="uil uil-brain"></i>
+                  </button>
+                </div>
+                <div class="chat-thinking-state" aria-label="Assistant is responding">
+                  <span class="chat-thinking-spinner" aria-hidden="true"></span>
+                </div>
+              </div>
+            </div>
+          `;
+
+          const renderChatMessages = (messages, options = {}) => {
+            if (!Array.isArray(messages) || !messages.length) {
+              chatThread.innerHTML = `
+                <div class="chat-empty-state" id="chat-empty-state">
+                  <div class="chat-empty-icon"><i class="uil uil-comment-message"></i></div>
+                  <div class="chat-empty-copy">Type your message below.</div>
+                </div>
+              `;
+            } else {
+              chatThread.innerHTML = messages.map(renderChatMessage).join("");
+            }
+
+            if (options.pendingAssistantAuthor) {
+              chatThread.insertAdjacentHTML("beforeend", renderThinkingBubble(options.pendingAssistantAuthor));
+            }
+
+            if (chatBadge) {
+              chatBadge.textContent = `${messages.length} messages`;
+            }
+
+            scrollChatToBottom();
+          };
+
+          scrollChatToBottom();
+
+          chatForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            if (chatForm.dataset.submitting === "true") {
+              return;
+            }
+
+            const message = chatInput?.value?.trim() || "";
+            if (!message) {
+              return;
+            }
+
+            chatForm.dataset.submitting = "true";
+            if (sendButton) {
+              sendButton.disabled = true;
+            }
+
+            const optimisticUserMessage = {
+              role: "user",
+              author: userName,
+              text: message,
+              time: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
+            };
+            const currentMessages = Array.from(chatThread.querySelectorAll(".message-row"))
+              .filter((node) => !node.hasAttribute("data-chat-loading"))
+              .map((node) => ({
+                role: node.classList.contains("assistant") ? "assistant" : "user",
+                author: node.querySelector(".message-meta")?.textContent?.split(" • ")[0] || "",
+                text: node.querySelector(".message-bubble > div:last-child")?.textContent || "",
+                time: node.querySelector(".message-meta")?.textContent?.split(" • ")[1] || "",
+              }));
+
+            renderChatMessages([...currentMessages, optimisticUserMessage], {
+              pendingAssistantAuthor: botName,
+            });
+            if (chatInput) {
+              chatInput.value = "";
+              chatInput.focus();
+            }
+
+            try {
+              const response = await fetch(chatForm.action, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({ message }),
+              });
+              const data = await response.json();
+
+              if (!response.ok || !data.ok) {
+                throw new Error(data.error || "The model could not respond right now.");
+              }
+
+              renderChatMessages(data.chatMessages || []);
+              if (chatInput) {
+                chatInput.value = "";
+                chatInput.focus();
+              }
+            } catch (error) {
+              renderChatMessages(currentMessages);
+              window.showToast(error.message || "The model could not respond right now.", "error");
+            } finally {
+              chatForm.dataset.submitting = "false";
+              if (sendButton) {
+                sendButton.disabled = false;
+              }
+              if (chatInput) {
+                chatInput.focus();
+              }
+            }
+          });
+
+          if (newSessionButton) {
+            newSessionButton.addEventListener("click", async () => {
+              try {
+                const response = await fetch("/chat/reset", {
+                  method: "POST",
+                  credentials: "same-origin",
+                });
+                const data = await response.json();
+
+                if (!response.ok || !data.ok) {
+                  throw new Error(data.error || "Unable to start a new session.");
+                }
+
+                renderChatMessages([]);
+                if (chatInput) {
+                  chatInput.value = "";
+                  chatInput.focus();
+                }
+              } catch (error) {
+                window.showToast(error.message || "Unable to start a new session.", "error");
+              }
+            });
+          }
+        }
+
+        };
+
+        initializePageFeatures();
+        syncMenuState();
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,36 @@
+<section class="auth-shell">
+  <div class="surface-card auth-card">
+    <div class="auth-brand">
+      <div class="auth-brand-mark"><%- brandMark %></div>
+    </div>
+    <h1>Sign In</h1>
+    <p class="page-subtitle">
+      Continue into Pikori with your workspace credentials.
+    </p>
+    <div class="auth-error <%= signin.error ? '' : 'd-none' %>" id="signin-error"><%= signin.error %></div>
+    <form class="auth-form" id="signin-form" action="/signin" method="post">
+      <div>
+        <label class="form-label" for="signin-username">Email</label>
+        <input id="signin-username" name="email" class="form-control" type="email" value="<%= signin.email %>" placeholder="Enter your email" />
+      </div>
+      <div>
+        <label class="form-label" for="signin-password">Password</label>
+        <input id="signin-password" name="password" class="form-control" type="password" placeholder="Enter your password" />
+      </div>
+      <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+        <a href="/signin" class="auth-link">Forgot my password</a>
+        <button class="btn btn-secondary-global" id="signin-button" type="submit"><span class="signin-button-label">Sign In</span><span class="auth-button-spinner" aria-hidden="true"></span></button>
+      </div>
+    </form>
+    <div class="auth-actions">
+      <button class="btn btn-light auth-provider-button" type="button" disabled>
+        <i class="uil uil-google"></i>
+        <span>Continue with Google</span>
+      </button>
+      <button class="btn btn-secondary-global auth-provider-button" type="button" disabled>
+        <i class="uil uil-apple"></i>
+        <span>Continue with Apple</span>
+      </button>
+    </div>
+  </div>
+</section>

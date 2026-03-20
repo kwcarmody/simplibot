@@ -1,0 +1,58 @@
+<section class="page-shell">
+  <header class="page-header">
+    <div>
+      <h1>ToDos</h1>
+      <p class="page-subtitle">Search, filter, inspect details inline, and open the right-side editor for updates.</p>
+    </div>
+    <div class="page-badge"><%= filteredTodos.length %> matching</div>
+  </header>
+
+  <form class="toolbar" method="get" action="/todos">
+    <div class="search-field">
+      <span class="search-icon" aria-hidden="true"><i class="uil uil-search"></i></span>
+      <input name="todoSearch" class="form-control" placeholder="Search todos" value="<%= filters.todoSearch %>" />
+    </div>
+    <select name="todoStatus" class="form-select" style="max-width: 220px;" onchange="this.form.submit()">
+      <% ["All", "Done", "ToDo", "Working", "Blocked", "Archived"].forEach((status) => { %>
+        <option value="<%= status %>" <%= filters.todoStatus === status ? 'selected' : '' %>><%= status %></option>
+      <% }) %>
+    </select>
+  </form>
+
+  <% if (Object.keys(groupedTodos).length) { %>
+    <% Object.entries(groupedTodos).forEach(([dueDate, items]) => { %>
+      <section class="todo-group">
+        <div class="todo-group-header">
+          <div>
+            <div class="muted-label">Due Date</div>
+            <h2 class="h4 mb-0 mt-2"><%= dueDate %></h2>
+          </div>
+          <div class="page-badge"><%= items.length %> items</div>
+        </div>
+        <% items.forEach((todo) => { %>
+          <details class="todo-item" <%= selectedTodo && selectedTodo.id === todo.id ? 'open' : '' %>>
+            <summary>
+              <div class="d-flex justify-content-between gap-3 flex-wrap">
+                <div class="todo-main">
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="muted-label"><%= todo.id %></span>
+                    <span class="status-pill status-<%= todo.status.toLowerCase() %>"><%= todo.status %></span>
+                  </div>
+                  <h3 class="h5 mt-2 mb-1"><%= todo.title %></h3>
+                  <div class="todo-meta">
+                    <span class="tool-description todo-owner">Owner: <%= todo.owner %></span>
+                    <span class="tool-description todo-due">Due: <%= todo.dueDate %></span>
+                  </div>
+                </div>
+                <a class="btn btn-sm btn-secondary-global align-self-start" href="/todos?<%= new URLSearchParams({ todoSearch: filters.todoSearch, todoStatus: filters.todoStatus, todo: todo.id }).toString() %>">Edit</a>
+              </div>
+            </summary>
+            <div class="todo-copy mt-3"><%= todo.details %></div>
+          </details>
+        <% }) %>
+      </section>
+    <% }) %>
+  <% } else { %>
+    <div class="empty-state">No todos match the current search and filter.</div>
+  <% } %>
+</section>

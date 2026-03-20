@@ -1,0 +1,246 @@
+<section class="page-shell">
+  <header class="page-header">
+    <div>
+      <h1>Settings</h1>
+      <p class="page-subtitle">Configure model, memory, tool, and channel settings using frontend-only local state.</p>
+    </div>
+    <div class="page-badge">Local state only</div>
+  </header>
+
+  <div class="settings-grid">
+    <section class="settings-section">
+      <form id="model-settings-form" action="/settings/model" method="post" novalidate>
+        <div class="settings-section-header">
+          <div class="muted-label">Model Settings</div>
+          <button class="btn btn-sm btn-secondary-global" id="model-settings-save" type="submit">Save</button>
+        </div>
+        <div class="settings-form-error d-none" id="model-settings-error" role="alert"></div>
+        <div class="settings-stack mt-3 mb-3">
+          <div class="w-100">
+            <label class="form-label">Provider</label>
+            <select class="form-select" id="model-provider-select" name="provider" data-model-provider>
+              <% ["None", "Ollama-Cloud", "Ollama-Local"].forEach((item) => { %>
+                <option value="<%= item %>" <%= settings.model.provider === item ? 'selected' : '' %>><%= item %></option>
+              <% }) %>
+            </select>
+          </div>
+        </div>
+        <div data-model-provider-section="Ollama-Cloud" class="<%= settings.model.provider === 'Ollama-Cloud' ? '' : 'd-none' %>">
+          <div class="settings-stack mb-3">
+            <div class="w-100">
+              <label class="form-label">Model</label>
+              <select class="form-select" name="model" data-model-select="Ollama-Cloud">
+                <% ["minimax-m2.7:cloud", "deepseek-v3.2:cloud", "qwen3.5:397b-cloud"].forEach((item) => { %>
+                  <option value="<%= item %>" <%= settings.model.provider === 'Ollama-Cloud' && settings.model.model === item ? 'selected' : '' %>><%= item %></option>
+                <% }) %>
+              </select>
+            </div>
+          </div>
+          <div class="settings-stack mb-3">
+            <div class="w-100">
+              <label class="form-label">API Endpoint</label>
+              <input class="form-control" name="endpoint" value="<%= settings.model.provider === 'Ollama-Cloud' ? settings.model.endpoint : '' %>" />
+            </div>
+          </div>
+          <div class="settings-stack">
+            <div class="w-100">
+              <label class="form-label">API Token</label>
+              <input class="form-control" name="apiKey" value="<%= settings.model.provider === 'Ollama-Cloud' ? settings.model.apiKey : '' %>" />
+            </div>
+          </div>
+        </div>
+        <div data-model-provider-section="Ollama-Local" class="<%= settings.model.provider === 'Ollama-Local' ? '' : 'd-none' %>">
+          <div class="settings-stack mb-3">
+            <div class="w-100">
+              <label class="form-label">Model</label>
+              <select class="form-select" name="model" data-model-select="Ollama-Local">
+                <% ["phi4-mini", "qwen3:8b"].forEach((item) => { %>
+                  <option value="<%= item %>" <%= settings.model.provider === 'Ollama-Local' && settings.model.model === item ? 'selected' : '' %>><%= item %></option>
+                <% }) %>
+              </select>
+            </div>
+          </div>
+          <div class="settings-stack">
+            <div class="w-100">
+              <label class="form-label">API Endpoint</label>
+              <input class="form-control" name="endpoint" value="<%= settings.model.provider === 'Ollama-Local' ? settings.model.endpoint : '' %>" />
+            </div>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="settings-section">
+      <form id="memory-settings-form" action="/settings/memory" method="post" novalidate>
+        <div class="settings-section-header">
+          <div class="muted-label">Memory Settings</div>
+          <button class="btn btn-sm btn-secondary-global" id="memory-settings-save" type="submit">Save</button>
+        </div>
+        <div class="settings-form-error d-none" id="memory-settings-error" role="alert"></div>
+        <div class="toggle-row mt-3 mb-3">
+          <div>
+            <div class="fw-semibold">Enable memory</div>
+            <div class="settings-help small">Keep user and bot context available across sessions.</div>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" id="memory-enabled" name="enabled" type="checkbox" value="true" <%= settings.memory.enabled ? 'checked' : '' %> />
+          </div>
+        </div>
+        <div class="surface-card memory-summary mb-3">
+          <div class="memory-summary-icon"><i class="uil uil-brain"></i></div>
+          <div class="memory-summary-content">
+            <div class="fw-semibold"><span data-memory-count>0</span> memories saved</div>
+            <div class="settings-help small">Search, filter, and remove saved context from protected local storage.</div>
+            <a class="btn btn-sm btn-secondary-global memory-summary-button" href="/settings?drawer=memory">View</a>
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">Memory max size</label>
+            <input class="form-control" name="maxSize" type="number" min="1" step="1" value="<%= settings.memory.maxSize %>" />
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">User name</label>
+            <input class="form-control" name="userName" value="<%= settings.memory.userName %>" />
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">User description</label>
+            <textarea class="form-control" name="userDescription" rows="3"><%= settings.memory.userDescription %></textarea>
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">Bot name</label>
+            <input class="form-control" name="botName" value="<%= settings.memory.botName %>" />
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">Bot description</label>
+            <textarea class="form-control" name="botDescription" rows="3"><%= settings.memory.botDescription %></textarea>
+          </div>
+        </div>
+        <button class="btn btn-danger-global" id="memory-delete-button" type="button" data-bs-toggle="modal" data-bs-target="#memory-delete-modal">Delete All</button>
+      </form>
+    </section>
+
+    <section class="settings-section">
+      <div class="settings-section-header">
+        <div class="muted-label">Tools Settings</div>
+        <button class="btn btn-sm btn-secondary-global" type="button">Save</button>
+      </div>
+      <div class="settings-stack mt-3 mb-3">
+        <div class="w-100">
+          <label class="form-label">API</label>
+          <input class="form-control" value="<%= settings.tools.apiBase %>" />
+        </div>
+      </div>
+      <div class="settings-stack">
+        <div class="w-100">
+          <label class="form-label">API Key</label>
+          <input class="form-control" value="<%= settings.tools.apiKey %>" />
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <div class="settings-section-header">
+        <div class="muted-label">Channel Settings</div>
+        <button class="btn btn-sm btn-secondary-global" type="button">Save</button>
+      </div>
+      <div class="settings-stack mt-3 mb-3">
+        <div class="w-100">
+          <label class="form-label">Telegram Bot Token</label>
+          <input class="form-control" value="<%= settings.channels.telegramToken %>" />
+        </div>
+      </div>
+      <div class="settings-stack mb-3">
+        <div class="w-100">
+          <label class="form-label">Email Address</label>
+          <input class="form-control" value="<%= settings.channels.emailAddress %>" />
+        </div>
+      </div>
+      <div class="settings-stack mb-3">
+        <div class="w-100">
+          <label class="form-label">Password</label>
+          <input class="form-control" value="<%= settings.channels.emailPassword %>" />
+        </div>
+      </div>
+      <div class="settings-stack mb-3">
+        <div class="w-100">
+          <label class="form-label">Server</label>
+          <input class="form-control" value="<%= settings.channels.emailServer %>" />
+        </div>
+      </div>
+      <div class="settings-stack">
+        <div class="w-100">
+          <label class="form-label">Port</label>
+          <input class="form-control" value="<%= settings.channels.emailPort %>" />
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <div class="settings-section-header">
+        <div class="muted-label">Session & API</div>
+        <button class="btn btn-sm btn-secondary-global" type="button">Save</button>
+      </div>
+      <div class="settings-stack mt-3 mb-3">
+        <div class="w-100">
+          <label class="form-label">API Endpoint</label>
+          <input class="form-control" value="<%= auth?.api?.endpoint || settings.tools.apiBase %>" readonly />
+        </div>
+      </div>
+      <div class="settings-stack mb-3">
+        <div class="w-100">
+          <label class="form-label">Auth Collection</label>
+          <input class="form-control" value="<%= auth?.api?.authCollection || 'users' %>" readonly />
+        </div>
+      </div>
+      <div class="settings-stack mb-3">
+        <div class="w-100">
+          <label class="form-label">User</label>
+          <input class="form-control" value="<%= auth?.user?.email || profile.email %>" readonly />
+        </div>
+      </div>
+      <div class="settings-stack mb-3">
+        <div class="w-100">
+          <label class="form-label">Token</label>
+          <input class="form-control" value="<%= auth?.api?.tokenPreview || 'Not signed in' %>" readonly />
+        </div>
+      </div>
+      <div class="settings-stack">
+        <div class="w-100">
+          <label class="form-label">Enabled Features</label>
+          <input
+            class="form-control"
+            value="<%= Object.entries(auth?.authorization?.features || {}).filter(([, enabled]) => enabled).map(([name]) => name).join(', ') || 'None' %>"
+            readonly
+          />
+        </div>
+      </div>
+    </section>
+  </div>
+</section>
+
+<div class="modal fade" id="memory-delete-modal" tabindex="-1" aria-labelledby="memory-delete-modal-label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content app-modal">
+      <div class="modal-header">
+        <h2 class="modal-title h5 mb-0" id="memory-delete-modal-label">Delete All Memories?</h2>
+        <button type="button" class="btn-close btn-close-white shadow-none" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0">This will delete all saved memories and restore the default memory settings. Deleted memories can't be recovered.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary-global" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger-global" id="memory-delete-confirm">Yes</button>
+      </div>
+    </div>
+  </div>
+</div>

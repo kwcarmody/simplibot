@@ -1,0 +1,89 @@
+<section class="page-shell chat-page">
+  <header class="page-header">
+    <div>
+      <h1>Chat</h1>
+      <p class="page-subtitle">
+        Converse with the agent, attach placeholders, and route messages through a static tool selection.
+      </p>
+    </div>
+    <div class="page-badge"><%= chatMessages.length %> messages</div>
+  </header>
+
+  <div class="chat-layout">
+    <section class="chat-panel">
+      <div class="chat-thread" id="chat-thread" data-chat-thread data-user-name="<%= settings.memory.userName %>" data-bot-name="<%= settings.memory.botName %>">
+        <% if (!chatMessages.length) { %>
+          <div class="chat-empty-state" id="chat-empty-state">
+            <div class="chat-empty-icon"><i class="uil uil-comment-message"></i></div>
+            <div class="chat-empty-copy">Type your message below.</div>
+          </div>
+        <% } else { %>
+          <% chatMessages.forEach((message) => { %>
+            <div class="message-row <%= message.role %>">
+              <div class="message-bubble">
+                <div class="message-meta-row">
+                  <div class="message-meta"><%= message.author %> • <%= message.time %></div>
+                  <button class="btn memory-icon-button" type="button" title="Save to memory." aria-label="Save to memory">
+                    <i class="uil uil-brain"></i>
+                  </button>
+                </div>
+                <div><%= message.text %></div>
+              </div>
+            </div>
+          <% }) %>
+        <% } %>
+      </div>
+    </section>
+
+    <section class="composer-panel">
+      <form id="chat-form" action="/chat/send" method="post" autocomplete="off">
+        <div class="input-group mb-3">
+          <input
+            id="chat-message-input"
+            class="form-control composer-input"
+            name="message"
+            type="text"
+            autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            placeholder="Ask the agent to summarize, draft, or run a placeholder action..."
+          />
+          <button class="btn chat-icon-button" type="submit" aria-label="Send message">
+            <i class="uil uil-comment-message"></i>
+          </button>
+        </div>
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <div class="d-flex gap-2 align-items-center">
+            <button class="btn chat-icon-button" type="button" aria-label="Attach">
+              <i class="uil uil-plus attach-icon"></i>
+            </button>
+            <div class="dropdown mobile-tool-menu">
+              <button
+                id="tool-menu-button"
+                class="btn chat-icon-button"
+                type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+                aria-label="Choose tool"
+              >
+                <i class="uil uil-ellipsis-v"></i>
+              </button>
+              <ul class="dropdown-menu mobile-tool-dropdown">
+                <% toolOptions.forEach((tool) => { %>
+                  <li><button class="dropdown-item <%= selectedTool === tool ? 'active' : '' %>" type="button"><%= tool %></button></li>
+                <% }) %>
+              </ul>
+            </div>
+            <select id="tool-select" class="form-select" style="width: 220px; flex: 0 0 220px;">
+              <% toolOptions.forEach((tool) => { %>
+                <option <%= selectedTool === tool ? 'selected' : '' %>><%= tool %></option>
+              <% }) %>
+            </select>
+          </div>
+          <button id="new-session-button" class="btn btn-sm btn-secondary-global" type="button">+ Session</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</section>

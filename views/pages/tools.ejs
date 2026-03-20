@@ -1,0 +1,41 @@
+<section class="page-shell">
+  <header class="page-header">
+    <div>
+      <h1>Tools</h1>
+      <p class="page-subtitle">Search available capabilities and toggle them on or off without leaving the interface.</p>
+    </div>
+    <div class="page-badge"><%= visibleTools.length %> visible</div>
+  </header>
+
+  <form class="toolbar" method="get" action="/tools">
+    <div class="search-field">
+      <span class="search-icon" aria-hidden="true"><i class="uil uil-search"></i></span>
+      <input name="toolSearch" class="form-control" placeholder="Search tools" value="<%= filters.toolSearch %>" />
+    </div>
+  </form>
+
+  <div class="tool-grid">
+    <% visibleTools.forEach((tool) => { %>
+      <article class="tool-card">
+        <div class="tool-row mb-3">
+          <div>
+            <h2 class="h5 mb-1"><%= tool.title %></h2>
+            <p class="tool-description mb-0"><%= tool.description %></p>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" <%= tool.enabled ? 'checked' : '' %> />
+          </div>
+        </div>
+        <div class="card-footer-row">
+          <div class="<%= tool.enabled ? 'status-label-enabled' : 'status-label-disabled' %>">
+            <%= tool.enabled ? 'Enabled' : 'Disabled' %>
+          </div>
+          <a class="tool-config-button" href="/tools?<%= new URLSearchParams({ toolSearch: filters.toolSearch, configureTool: tool.id }).toString() %>">
+            <span>Configure</span>
+            <i class="uil uil-setting"></i>
+          </a>
+        </div>
+      </article>
+    <% }) %>
+  </div>
+</section>

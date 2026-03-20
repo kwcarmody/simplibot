@@ -1,0 +1,37 @@
+<div class="drawer-header">
+  <div class="d-flex align-items-start justify-content-between gap-3">
+    <div>
+      <div class="muted-label">ToDo Editor</div>
+      <h2 class="h4 mt-2 mb-1"><%= selectedTodo.title %></h2>
+      <div class="text-secondary small"><%= selectedTodo.id %></div>
+    </div>
+    <a class="btn btn-sm btn-secondary-global" href="/todos">Close</a>
+  </div>
+</div>
+<div class="drawer-body mt-4">
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Owner</label>
+      <input class="form-control" value="<%= selectedTodo.owner %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Status</label>
+      <input class="form-control" value="<%= selectedTodo.status %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-3">
+    <div class="w-100">
+      <label class="form-label">Due Date</label>
+      <input class="form-control" value="<%= selectedTodo.dueDate %>" />
+    </div>
+  </div>
+  <div class="settings-stack mb-4">
+    <div class="w-100">
+      <label class="form-label">Details</label>
+      <textarea class="form-control" rows="6"><%= selectedTodo.details %></textarea>
+    </div>
+  </div>
+  <button class="btn btn-light w-100" type="button">Save</button>
+</div>
