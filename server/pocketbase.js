@@ -6,6 +6,8 @@ const PB_API_BASE = process.env.PB_API_BASE || "https://api.people.engineering";
 const PB_AUTH_COLLECTION = process.env.PB_AUTH_COLLECTION || "users";
 const PB_AUTHZ_COLLECTION = process.env.PB_AUTHZ_COLLECTION || "authorizations";
 const PB_USER_SETTINGS_COLLECTION = process.env.PB_USER_SETTINGS_COLLECTION || "user_settings";
+const PB_TENANTS_COLLECTION = process.env.PB_TENANTS_COLLECTION || "tenants";
+const PB_TENANT_MEMBERSHIPS_COLLECTION = process.env.PB_TENANT_MEMBERSHIPS_COLLECTION || "tenant_memberships";
 
 const DEFAULT_FEATURES = {
   home: false,
@@ -51,6 +53,33 @@ async function getUserSettingsRecord(client, userId) {
   }
 }
 
+async function getTenantMembershipsForUser(client, userId) {
+  const records = await client.collection(PB_TENANT_MEMBERSHIPS_COLLECTION).getFullList({
+    filter: `user = "${userId}" && active = true`,
+    sort: 'created',
+  });
+  return Array.isArray(records) ? records : [];
+}
+
+async function getTenantRecord(client, tenantId) {
+  return client.collection(PB_TENANTS_COLLECTION).getOne(tenantId);
+}
+
+async function getActiveTenantContextForUser(client, userId) {
+  const memberships = await getTenantMembershipsForUser(client, userId);
+  if (!memberships.length) {
+    return null;
+  }
+
+  const membership = memberships[0];
+  const tenant = await getTenantRecord(client, membership.tenant);
+
+  return {
+    membership,
+    tenant,
+  };
+}
+
 async function saveUserSettingsRecord(client, userId, payload) {
   const existing = await getUserSettingsRecord(client, userId);
   const body = {
@@ -93,10 +122,15 @@ module.exports = {
   PB_AUTH_COLLECTION,
   PB_AUTHZ_COLLECTION,
   PB_USER_SETTINGS_COLLECTION,
+  PB_TENANTS_COLLECTION,
+  PB_TENANT_MEMBERSHIPS_COLLECTION,
   createClient,
   signInWithPassword,
   getAuthorizationRecord,
   getUserSettingsRecord,
+  getTenantMembershipsForUser,
+  getTenantRecord,
+  getActiveTenantContextForUser,
   saveUserSettingsRecord,
   normalizeFeatures,
   maskToken,

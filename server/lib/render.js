@@ -41,6 +41,7 @@ function renderRoute(req, res, route) {
     chatMessages: req.session.chat?.messages || [],
     settingsOverride: req.session.ui?.settings || null,
     docs: req.docsPage || null,
+    tenant: req.session.tenant || null,
   });
 
   res.render('layout', {

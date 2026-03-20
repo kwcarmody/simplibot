@@ -2,13 +2,14 @@ const express = require('express');
 const {
   PB_API_BASE,
   PB_AUTH_COLLECTION,
+  getActiveTenantContextForUser,
   getAuthorizationRecord,
   getUserSettingsRecord,
   maskToken,
   normalizeFeatures,
   signInWithPassword,
 } = require('../pocketbase');
-const { mapUserSettingsRecordToSettings } = require('../lib/session');
+const { mapTenantContextToSession, mapUserSettingsRecordToSettings } = require('../lib/session');
 const { getFirstAuthorizedRoute, renderSignin } = require('../lib/render');
 
 function regenerateSession(req) {
@@ -56,6 +57,12 @@ function createAuthRouter() {
 
       const authorizationRecord = await getAuthorizationRecord(client, authRecord.id);
       const userSettingsRecord = await getUserSettingsRecord(client, authRecord.id);
+      const tenantContext = await getActiveTenantContextForUser(client, authRecord.id);
+
+      if (!tenantContext) {
+        throw new Error('Authenticated user does not have an active tenant membership.');
+      }
+
       const features = normalizeFeatures(authorizationRecord.features);
       const redirectTo = getFirstAuthorizedRoute(features);
 
@@ -80,6 +87,8 @@ function createAuthRouter() {
         },
       };
 
+      req.session.tenant = mapTenantContextToSession(tenantContext);
+
       req.session.ui = {
         settings: mapUserSettingsRecordToSettings(userSettingsRecord),
       };
@@ -94,7 +103,9 @@ function createAuthRouter() {
       console.error(error);
       const message = error?.status === 400 || error?.status === 401
         ? 'The email or password was not accepted.'
-        : 'Sign in failed. Check the PocketBase connection and authorization record.';
+        : error?.message === 'Authenticated user does not have an active tenant membership.'
+          ? 'Your account is signed in, but it is not assigned to an active tenant yet.'
+          : 'Sign in failed. Check the PocketBase connection, tenant membership, and authorization record.';
 
       if (isFetchRequest) {
         return res.status(401).json({ ok: false, error: message });
