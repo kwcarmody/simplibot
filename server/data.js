@@ -363,6 +363,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
 
   const effectiveTodos = extras.todos || state.todos;
   const stats = computeStats({ ...state, todos: effectiveTodos });
+  const selectedTodo = extras.selectedTodo || effectiveTodos.find((item) => item.id === query.todo) || null;
   const toolSearch = String(query.toolSearch || "");
   const reportSearch = String(query.reportSearch || "");
   const todoSearch = String(query.todoSearch || "");
@@ -419,7 +420,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
       todoSearch,
       todoStatus,
     },
-    selectedTodo: effectiveTodos.find((item) => item.id === query.todo) || null,
+    selectedTodo,
     selectedToolConfig: state.tools.find((item) => item.id === query.configureTool) || null,
     selectedReportConfig: state.reports.find((item) => item.id === query.configureReport) || null,
     selectedChannelConfig: state.channels.find((item) => item.id === query.configureChannel) || null,

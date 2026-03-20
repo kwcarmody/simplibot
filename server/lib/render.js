@@ -55,6 +55,7 @@ function renderRoute(req, res, route) {
     docs: req.docsPage || null,
     tenant: req.session.tenant || null,
     todos: req.todosPage?.todos || null,
+    selectedTodo: req.todosPage?.selectedTodo || null,
   });
 
   res.render('layout', {

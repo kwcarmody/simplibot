@@ -245,6 +245,8 @@ Current app behavior:
 - todos are read from PocketBase by active tenant id
 - due dates are displayed in America/New_York in the UI
 - priority is intentionally ignored in the first integration pass
+- new todos default to the current signed-in user as owner and creator
+- todo updates are blocked if the record belongs to a different tenant
 
 ## Tenant-Aware Protected Flow
 

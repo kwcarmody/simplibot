@@ -35,11 +35,14 @@ function createPageRouter() {
 
     if (route === 'todos') {
       try {
+        const todos = await listTodosForTenant({
+          authToken: req.session.auth.token,
+          tenantId: req.session.tenant.id,
+        });
+        const selectedTodo = todos.find((item) => item.id === req.query.todo) || null;
         req.todosPage = {
-          todos: await listTodosForTenant({
-            authToken: req.session.auth.token,
-            tenantId: req.session.tenant.id,
-          }),
+          todos,
+          selectedTodo,
         };
       } catch (error) {
         console.error(error);
