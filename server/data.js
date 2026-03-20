@@ -446,7 +446,7 @@ function normalizeFeatureMap(features) {
     channels: true,
     settings: true,
     profile: true,
-    docs: true,
+    docs: false,
     ...(features || {}),
   };
 }
