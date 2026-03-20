@@ -1743,3 +1743,31 @@ html.sidebar-minimized .sidebar .sidebar-user {
   gap: 12px;
   margin-top: 16px;
 }
+
+
+.todo-flyout-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drawer-card-stack-item {
+  padding: 16px;
+}
+
+.todo-flyout-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.todo-flyout-form input,
+.todo-flyout-form select,
+.todo-flyout-form textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: inherit;
+  padding: 10px 12px;
+}
