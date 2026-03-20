@@ -1,0 +1,82 @@
+    <div class="drawer-header">
+        <div class="d-flex align-items-start justify-content-between gap-3">
+            <div>
+                <div class="muted-label">ToDos</div>
+                <h2 class="h4 mt-2 mb-1">New ToDo</h2>
+                <div class="text-secondary small">Add a new ToDo item.</div>
+            </div>
+            <a class="btn btn-sm btn-secondary-global" href="/todos">Close</a>
+        </div>
+    </div>
+    <div class="drawer-body mt-4">
+        <!--Title-->
+        <div class="settings-stack mb-3">
+            <div class="w-100">
+                <label class="form-label">Title</label>
+                <input class="form-control" value="" />
+            </div>
+        </div>
+
+        <!--Status-->
+        <div class="settings-stack mb-3">
+            <div class="w-100">
+                <label class="form-label">Status</label>
+                <select class="form-select" id="" name="">
+                    <option value="">ToDo</option>
+                    <option value="">Working</option>
+                    <option value="">Blocked</option>
+                    <option value="">Done</option>
+                    <option value="">Archived</option>
+                </select>
+            </div>
+        </div>
+
+        <!--Due Date-->
+        <div class="settings-stack mb-3">
+            <div class="w-100">
+                <label class="form-label">Due Date</label>
+                <input class="form-control"/>
+            </div>
+        </div>
+
+        <!--Owner Type-->
+        <div class="settings-stack mb-3">
+            <div class="w-100">
+                <label class="form-label">Owner Type</label>
+                <select class="form-select" id="" name="">
+                    <option value="">User</option>
+                    <option value="">Bot</option>
+                </select>
+            </div>
+        </div>
+
+        <!--Owner User-->
+        <div class="settings-stack mb-3">
+            <div class="w-100">
+                <label class="form-label">Owner</label>
+                <select class="form-select" id="" name="">
+                    <option value="">User Name 1</option>
+                    <option value="">User Name 2</option>
+                    <option value="">Bot</option>
+                </select>
+            </div>
+        </div>
+
+        <!--Owner Label-->
+        <div class="settings-stack mb-3">
+            <div class="w-100">
+                <label class="form-label">Owner Label</label>
+                <input class="form-control"/>
+            </div>
+        </div>
+
+        <!--Details-->
+        <div class="settings-stack mb-3">
+            <div class="w-100">
+                <label class="form-label">Details</label>
+                <textarea class="form-control" rows="3"></textarea>
+            </div>
+        </div>
+        
+        <button class="btn secondary btn-light w-100" type="button">Save</button>
+    </div>
