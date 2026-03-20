@@ -1,5 +1,6 @@
 const express = require('express');
 const { allRoutes, getFirstAuthorizedRoute, hasTenantSession, protectedRoutes, redirectToSafeEntry, renderNotFound, renderRoute, renderSignin, routeFeatureMap } = require('../lib/render');
+const { listTodosForTenant } = require('../services/todos');
 
 function createPageRouter() {
   const router = express.Router();
@@ -8,7 +9,7 @@ function createPageRouter() {
     res.redirect('/signin');
   });
 
-  router.get('/:route', (req, res, next) => {
+  router.get('/:route', async (req, res, next) => {
     const route = req.params.route;
     if (!allRoutes.has(route)) {
       return next();
@@ -30,6 +31,20 @@ function createPageRouter() {
     const features = req.session.auth?.authorization?.features || {};
     if (requiredFeature && !features[requiredFeature]) {
       return res.redirect(getFirstAuthorizedRoute(features));
+    }
+
+    if (route === 'todos') {
+      try {
+        req.todosPage = {
+          todos: await listTodosForTenant({
+            authToken: req.session.auth.token,
+            tenantId: req.session.tenant.id,
+          }),
+        };
+      } catch (error) {
+        console.error(error);
+        req.todosPage = { todos: [] };
+      }
     }
 
     return renderRoute(req, res, route);

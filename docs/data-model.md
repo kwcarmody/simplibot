@@ -221,6 +221,31 @@ Important note:
 
 `server/data.js` is a fallback/default source, not the source of truth for authenticated persisted settings.
 
+
+### `todos`
+
+Purpose:
+
+- tenant-scoped shared task list
+
+Important fields:
+
+- `tenant` relation
+- `title`
+- `status`
+- `dueDate` (stored in UTC)
+- `details`
+- `ownerType`
+- `ownerUser`
+- `ownerLabel`
+- `createdBy`
+
+Current app behavior:
+
+- todos are read from PocketBase by active tenant id
+- due dates are displayed in America/New_York in the UI
+- priority is intentionally ignored in the first integration pass
+
 ## Tenant-Aware Protected Flow
 
 Protected app routes should require both:

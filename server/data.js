@@ -361,7 +361,8 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
     };
   }
 
-  const stats = computeStats(state);
+  const effectiveTodos = extras.todos || state.todos;
+  const stats = computeStats({ ...state, todos: effectiveTodos });
   const toolSearch = String(query.toolSearch || "");
   const reportSearch = String(query.reportSearch || "");
   const todoSearch = String(query.todoSearch || "");
@@ -374,7 +375,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
   const visibleReports = state.reports.filter((report) =>
     [report.title, report.description].some((value) => value.toLowerCase().includes(normalizeString(reportSearch)))
   );
-  const filteredTodos = state.todos.filter((todo) => {
+  const filteredTodos = effectiveTodos.filter((todo) => {
     const matchesSearch = [todo.id, todo.title, todo.owner, todo.details].some((value) =>
       value.toLowerCase().includes(normalizeString(todoSearch))
     );
@@ -403,7 +404,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
     reports: state.reports,
     visibleReports,
     channels: state.channels,
-    todos: state.todos,
+    todos: effectiveTodos,
     filteredTodos,
     groupedTodos: groupTodos(filteredTodos),
     memories: state.memories,
@@ -418,7 +419,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
       todoSearch,
       todoStatus,
     },
-    selectedTodo: state.todos.find((item) => item.id === query.todo) || null,
+    selectedTodo: effectiveTodos.find((item) => item.id === query.todo) || null,
     selectedToolConfig: state.tools.find((item) => item.id === query.configureTool) || null,
     selectedReportConfig: state.reports.find((item) => item.id === query.configureReport) || null,
     selectedChannelConfig: state.channels.find((item) => item.id === query.configureChannel) || null,

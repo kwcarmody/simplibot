@@ -54,6 +54,7 @@ function renderRoute(req, res, route) {
     settingsOverride: req.session.ui?.settings || null,
     docs: req.docsPage || null,
     tenant: req.session.tenant || null,
+    todos: req.todosPage?.todos || null,
   });
 
   res.render('layout', {
