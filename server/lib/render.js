@@ -1,7 +1,7 @@
 const { getViewModel } = require('../data');
 const { normalizeFeatures } = require('../pocketbase');
 
-const protectedRoutes = new Set(['home', 'chat', 'tools', 'todos', 'reports', 'channels', 'settings', 'profile']);
+const protectedRoutes = new Set(['home', 'chat', 'tools', 'todos', 'reports', 'channels', 'settings', 'profile', 'docs']);
 const allRoutes = new Set([...protectedRoutes, 'signin']);
 const routeFeatureMap = {
   home: 'home',
@@ -12,6 +12,7 @@ const routeFeatureMap = {
   channels: 'channels',
   settings: 'settings',
   profile: 'profile',
+  docs: 'docs',
 };
 
 function getFirstAuthorizedRoute(features = {}) {
@@ -39,6 +40,7 @@ function renderRoute(req, res, route) {
   const viewModel = getViewModel(route, req.query, req.session.auth || null, {
     chatMessages: req.session.chat?.messages || [],
     settingsOverride: req.session.ui?.settings || null,
+    docs: req.docsPage || null,
   });
 
   res.render('layout', {

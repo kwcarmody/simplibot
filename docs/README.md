@@ -50,3 +50,7 @@ There is still a legacy static SPA codebase in:
 - `legacy-ui-comps/js/`
 
 That code is no longer the primary runtime. The active app is the Express + EJS implementation described in these docs.
+
+## In-App Docs Route
+
+The active app now exposes documentation inside the UI at `/docs` with per-document routes under `/docs/:slug`.
