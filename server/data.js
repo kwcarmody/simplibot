@@ -8,6 +8,7 @@ const navItems = [
   { id: "reports", label: "Reports", icon: "uil uil-chart-line", href: "/reports" },
   { id: "channels", label: "Channels", icon: "uil uil-comments", href: "/channels" },
   { id: "settings", label: "Settings", icon: "uil uil-setting", href: "/settings" },
+  { id: "docs", label: "Docs", icon: "uil uil-book-open", href: "/docs" },
 ];
 
 const toolOptions = ["Web Search", "Calendar", "Filesystem", "CRM", "Automation"];
@@ -427,6 +428,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
       email: "",
       error: "",
     },
+    docs: extras.docs || null,
   };
 }
 
@@ -444,6 +446,7 @@ function normalizeFeatureMap(features) {
     channels: true,
     settings: true,
     profile: true,
+    docs: true,
     ...(features || {}),
   };
 }

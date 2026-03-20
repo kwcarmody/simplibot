@@ -1,0 +1,24 @@
+<section class="page-shell docs-page">
+  <div class="page-head">
+    <div>
+      <div class="page-badge">Docs</div>
+      <h1>Documentation</h1>
+      <p>Browse the active SimpliBot architecture and implementation notes from inside the app.</p>
+    </div>
+  </div>
+
+  <div class="docs-layout">
+    <aside class="surface-card docs-nav">
+      <div class="surface-label">Document Map</div>
+      <a class="docs-link <%= docs?.selectedDoc?.slug === 'overview' ? 'active' : '' %>" href="/docs">Overview</a>
+      <% (docs?.docsList || []).forEach((doc) => { %>
+        <a class="docs-link <%= docs?.selectedDoc?.slug === doc.slug ? 'active' : '' %>" href="/docs/<%= doc.slug %>"><%= doc.title %></a>
+      <% }) %>
+    </aside>
+
+    <article class="surface-card docs-article markdown-body">
+      <div class="surface-label"><%= docs?.selectedDoc?.title || 'Documentation' %></div>
+      <div><%- docs?.selectedDoc?.html || '<p>No document selected.</p>' %></div>
+    </article>
+  </div>
+</section>

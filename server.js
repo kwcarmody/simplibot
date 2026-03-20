@@ -5,6 +5,7 @@ const { createAuthRouter } = require('./server/routes/auth');
 const { createSettingsRouter } = require('./server/routes/settings');
 const { createChatRouter } = require('./server/routes/chat');
 const { createPageRouter } = require('./server/routes/pages');
+const { createDocsRouter } = require('./server/routes/docs');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -36,6 +37,7 @@ app.use('/node_modules', express.static(path.join(__dirname, 'node_modules')));
 app.use(createAuthRouter());
 app.use(createSettingsRouter());
 app.use(createChatRouter());
+app.use(createDocsRouter());
 app.use(createPageRouter());
 
 if (require.main === module) {
