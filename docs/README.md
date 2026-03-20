@@ -22,7 +22,13 @@ This directory documents the current Node.js + Express + EJS implementation of P
 Pikori currently runs as a server-rendered Express app:
 
 - `server.js`
-  Main application server, routes, auth flow, settings saves, and chat requests.
+  Main application entry point, middleware, and route registration.
+- `server/routes/*.js`
+  Route modules for auth, settings, chat, and page rendering.
+- `server/services/model.js`
+  Model endpoint helpers and chat reply generation.
+- `server/prompts/chat.js`
+  Chat system prompt and message assembly helpers.
 - `server/pocketbase.js`
   PocketBase client helpers for auth, authorization, and `user_settings` persistence.
 - `server/data.js`

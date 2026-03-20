@@ -1,0 +1,98 @@
+const express = require('express');
+const {
+  PB_API_BASE,
+  PB_AUTH_COLLECTION,
+  createClient,
+  getAuthorizationRecord,
+  getUserSettingsRecord,
+  maskToken,
+  normalizeFeatures,
+  signInWithPassword,
+} = require('../pocketbase');
+const { mapUserSettingsRecordToSettings } = require('../lib/session');
+const { getFirstAuthorizedRoute, renderSignin } = require('../lib/render');
+
+function createAuthRouter() {
+  const router = express.Router();
+
+  router.get('/logout', (req, res) => {
+    req.session.destroy(() => {
+      res.clearCookie('pikori.sid');
+      res.redirect('/signin');
+    });
+  });
+
+  router.post('/signin', async (req, res) => {
+    const body = req.body || {};
+    const email = String(body.email || '').trim();
+    const password = String(body.password || '');
+    const isFetchRequest = req.get('X-Pikori-Auth') === 'fetch';
+
+    if (!email || !password) {
+      const message = 'Enter your email and password to continue.';
+      if (isFetchRequest) {
+        return res.status(400).json({ ok: false, error: message });
+      }
+      return renderSignin(res, { email, error: message });
+    }
+
+    try {
+      const { client, authData } = await signInWithPassword(email, password);
+      const authRecord = authData?.record || client.authStore?.record || authData;
+      if (!authRecord?.id || !authRecord?.email) {
+        throw new Error('PocketBase authentication succeeded without a usable user record.');
+      }
+
+      const authorizationRecord = await getAuthorizationRecord(client, authRecord.id);
+      const userSettingsRecord = await getUserSettingsRecord(client, authRecord.id);
+      const features = normalizeFeatures(authorizationRecord.features);
+      const redirectTo = getFirstAuthorizedRoute(features);
+
+      req.session.auth = {
+        token: client.authStore.token,
+        user: {
+          id: authRecord.id,
+          email: authRecord.email,
+          name: authRecord.name || authRecord.email,
+        },
+        authorization: {
+          id: authorizationRecord.id,
+          role: authorizationRecord.role || 'default',
+          features,
+        },
+        api: {
+          endpoint: authorizationRecord.apiBase || PB_API_BASE,
+          authCollection: PB_AUTH_COLLECTION,
+          tokenPreview: maskToken(client.authStore.token),
+        },
+      };
+      req.session.ui = {
+        ...(req.session.ui || {}),
+        settings: mapUserSettingsRecordToSettings(userSettingsRecord),
+      };
+      req.session.chat = req.session.chat || { messages: [] };
+
+      if (isFetchRequest) {
+        return res.json({ ok: true, redirect: redirectTo });
+      }
+      return res.redirect(redirectTo);
+    } catch (error) {
+      console.error(error);
+      const message = error?.status === 400 || error?.status === 401
+        ? 'The email or password was not accepted.'
+        : 'Sign in failed. Check the PocketBase connection and authorization record.';
+
+      if (isFetchRequest) {
+        return res.status(401).json({ ok: false, error: message });
+      }
+
+      return renderSignin(res, { email, error: message });
+    }
+  });
+
+  return router;
+}
+
+module.exports = {
+  createAuthRouter,
+};
