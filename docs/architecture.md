@@ -130,4 +130,4 @@ The app shell is shared across pages so the UI feels consistent even though page
 
 ## Legacy Code
 
-There is older frontend-only code under `js/` and `index.html`. It remains in the repo, but the current working product is the EJS app.
+There is older frontend-only code under `legacy-ui-comps/js/` and `legacy-ui-comps/index.html`. It remains in the repo, but the current working product is the EJS app.

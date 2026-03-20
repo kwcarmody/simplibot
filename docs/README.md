@@ -40,7 +40,7 @@ Pikori currently runs as a server-rendered Express app:
 
 There is still a legacy static SPA codebase in:
 
-- `index.html`
-- `js/`
+- `legacy-ui-comps/index.html`
+- `legacy-ui-comps/js/`
 
 That code is no longer the primary runtime. The active app is the Express + EJS implementation described in these docs.
