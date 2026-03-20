@@ -15,6 +15,7 @@ function createTodosRouter() {
       tenantId: req.session.tenant.id,
       currentUserId,
       body: req.body || {},
+      tenantTimeZone: req.session.tenant.timeZone,
     });
 
     const validationError = validateTodoPayload(payload);

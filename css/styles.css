@@ -739,6 +739,10 @@ html.sidebar-minimized .sidebar .sidebar-user {
   color: #ffffff !important;
 }
 
+.form-control::placeholder {
+  color: #738094;
+}
+
 .form-control:focus {
   background: #232f45 !important;
   color: #ffffff !important;
@@ -784,6 +788,11 @@ html.sidebar-minimized .sidebar .sidebar-user {
   color: #ffffff;
   border-color: transparent;
   box-shadow: 0 0 0 0.2rem rgba(126, 162, 255, 0.16);
+}
+
+#todo-dueDate::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 1;
 }
 
 .btn-light {
@@ -1717,10 +1726,32 @@ html.sidebar-minimized .sidebar .sidebar-user {
 
 
 .toolbar-button--icon {
+  display: inline-flex;
+  align-items: center;
   width: 40px;
+  min-width: 40px;
+  height: 40px;
   justify-content: center;
   font-size: 1.2rem;
   text-decoration: none;
+  background: transparent;
+  border: 0;
+  color: #ffffff;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.toolbar-button--icon:hover,
+.toolbar-button--icon:focus,
+.toolbar-button--icon:active {
+  background: transparent;
+  border: 0;
+  color: #ffffff;
+}
+
+.toolbar-button--icon i {
+  display: block;
+  line-height: 1;
 }
 
 .drawer-shell {
@@ -1770,4 +1801,25 @@ html.sidebar-minimized .sidebar .sidebar-user {
   background: rgba(255,255,255,0.04);
   color: inherit;
   padding: 10px 12px;
+}
+
+
+/* kc added */
+
+.drawer-header-inner-content{
+  width:100%;
+}
+
+.drawer-header-global{
+  min-height: 60px;
+  padding-top: 20px;
+  width: 100%;
+}
+
+.drawer-header-global .label{
+  float:left
+}
+
+.drawer-header-global .control{
+  float:right
 }

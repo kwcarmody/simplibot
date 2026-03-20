@@ -61,6 +61,25 @@ async function getTenantMembershipsForUser(client, userId) {
   return Array.isArray(records) ? records : [];
 }
 
+async function getActiveTenantMembers(client, tenantId) {
+  const records = await client.collection(PB_TENANT_MEMBERSHIPS_COLLECTION).getFullList({
+    filter: `tenant = "${tenantId}" && active = true`,
+    sort: 'created',
+  });
+  return Array.isArray(records) ? records : [];
+}
+
+async function getUsersByIds(client, userIds = []) {
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+  if (!ids.length) {
+    return [];
+  }
+
+  const filter = ids.map((id) => `id = "${id}"`).join(' || ');
+  const records = await client.collection(PB_AUTH_COLLECTION).getFullList({ filter });
+  return Array.isArray(records) ? records : [];
+}
+
 async function getTenantRecord(client, tenantId) {
   return client.collection(PB_TENANTS_COLLECTION).getOne(tenantId);
 }
@@ -129,6 +148,8 @@ module.exports = {
   getAuthorizationRecord,
   getUserSettingsRecord,
   getTenantMembershipsForUser,
+  getActiveTenantMembers,
+  getUsersByIds,
   getTenantRecord,
   getActiveTenantContextForUser,
   saveUserSettingsRecord,

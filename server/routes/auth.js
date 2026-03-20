@@ -3,13 +3,15 @@ const {
   PB_API_BASE,
   PB_AUTH_COLLECTION,
   getActiveTenantContextForUser,
+  getActiveTenantMembers,
   getAuthorizationRecord,
   getUserSettingsRecord,
+  getUsersByIds,
   maskToken,
   normalizeFeatures,
   signInWithPassword,
 } = require('../pocketbase');
-const { mapTenantContextToSession, mapUserSettingsRecordToSettings } = require('../lib/session');
+const { mapTenantContextToSession, mapTenantMembersToSession, mapUserSettingsRecordToSettings } = require('../lib/session');
 const { getFirstAuthorizedRoute, renderSignin } = require('../lib/render');
 
 function regenerateSession(req) {
@@ -63,6 +65,12 @@ function createAuthRouter() {
         throw new Error('Authenticated user does not have an active tenant membership.');
       }
 
+      const tenantMembers = await getActiveTenantMembers(client, tenantContext.tenant.id);
+      const tenantUserIds = tenantMembers
+        .map((membership) => Array.isArray(membership.user) ? membership.user[0] : membership.user)
+        .filter(Boolean);
+      const tenantUsers = await getUsersByIds(client, tenantUserIds);
+
       const features = normalizeFeatures(authorizationRecord.features);
       const redirectTo = getFirstAuthorizedRoute(features);
 
@@ -87,7 +95,10 @@ function createAuthRouter() {
         },
       };
 
-      req.session.tenant = mapTenantContextToSession(tenantContext);
+      req.session.tenant = {
+        ...mapTenantContextToSession(tenantContext),
+        users: mapTenantMembersToSession(tenantMembers, tenantUsers),
+      };
 
       req.session.ui = {
         settings: mapUserSettingsRecordToSettings(userSettingsRecord),

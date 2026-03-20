@@ -1,62 +1,82 @@
-<div class="todo-flyout__header">
-  <div>
-    <p class="todo-flyout__eyebrow"><%= isNewTodo ? 'New ToDo' : 'ToDo Details' %></p>
-    <h2 class="todo-flyout__title"><%= isNewTodo ? 'New ToDo' : (selectedTodo?.title || 'ToDo Details') %></h2>
+<div class="drawer-header">
+  <div class="d-flex align-items-start justify-content-between gap-3">
+      <div class="drawer-header-inner-content">
+          <div class="drawer-header-global">
+            <div class="muted-label label">ToDos</div>
+            <a class="btn btn-sm btn-secondary-global control" href="/todos">Close</a>
+          </div>
+          <h2 class="h4 mt-2 mb-1"><%= isNewTodo ? 'New ToDo' : (selectedTodo?.title || 'ToDo Details') %></h2>
+          <div class="text-secondary small">Manage ToDos</div>
+      </div>
   </div>
-  <a class="todo-flyout__close" href="/todos" aria-label="Close ToDo flyout">×</a>
 </div>
+<div class="drawer-body mt-4">
+  <form class="todo-flyout__body" method="post" action="/todos/save">
+    <% if (!isNewTodo && selectedTodo?.id) { %>
+      <input type="hidden" name="todoId" value="<%= selectedTodo.id %>" />
+    <% } %>
 
-<form method="post" class="todo-flyout__body" method="post" action="/todos/save">
-  <input type="hidden" name="todoId" value="<%= selectedTodo?.id || '' %>" />
-
-  <div class="todo-flyout__section">
-    <label class="todo-flyout__label" for="todo-title">Title</label>
-    <input id="todo-title" class="todo-flyout__input" type="text" name="title" value="<%= selectedTodo?.title || '' %>" placeholder="Enter todo title" required />
-  </div>
-
-  <div class="todo-flyout__grid">
-    <div class="todo-flyout__section">
-      <label class="todo-flyout__label" for="todo-status">Status</label>
-      <select id="todo-status" class="todo-flyout__input" name="status">
-        <% ['ToDo','Working','Blocked','Done','Archived'].forEach((statusOption) => { %>
-          <option value="<%= statusOption %>" <%= (selectedTodo?.status || 'ToDo') === statusOption ? 'selected' : '' %>><%= statusOption %></option>
-        <% }) %>
-      </select>
+    <!--Title-->
+    <div class="settings-stack mb-3">
+        <div class="w-100">
+            <label class="form-label">Title</label>
+            <input id="todo-title" class="form-control" name="title" value="<%= selectedTodo?.title || '' %>" placeholder="Enter todo title" required  />
+        </div>
     </div>
 
-    <div class="todo-flyout__section">
-      <label class="todo-flyout__label" for="todo-dueDate">Due Date</label>
-      <input id="todo-dueDate" class="todo-flyout__input" type="datetime-local" name="dueDate" value="<%= selectedTodo?.dueDateInput || '' %>" />
-    </div>
-  </div>
-
-  <div class="todo-flyout__grid">
-    <div class="todo-flyout__section">
-      <label class="todo-flyout__label" for="todo-ownerType">Owner Type</label>
-      <select id="todo-ownerType" class="todo-flyout__input" name="ownerType">
-        <option value="user" <%= (selectedTodo?.ownerType || 'user') === 'user' ? 'selected' : '' %>>user</option>
-        <option value="bot" <%= selectedTodo?.ownerType === 'bot' ? 'selected' : '' %>>bot</option>
-      </select>
+    <!--Status-->
+    <div class="settings-stack mb-3">
+        <div class="w-100">
+            <label class="form-label">Status</label>
+            <select class="form-select" id="todo-status" name="status">
+              <% ['ToDo','Working','Blocked','Done','Archived'].forEach((statusOption) => { %>
+                <option value="<%= statusOption %>" <%= (selectedTodo?.status || 'ToDo') === statusOption ? 'selected' : '' %>><%= statusOption %></option>
+              <% }) %>
+            </select>
+        </div>
     </div>
 
-    <div class="todo-flyout__section">
-      <label class="todo-flyout__label" for="todo-ownerUser">Owner User ID</label>
-      <input id="todo-ownerUser" class="todo-flyout__input" type="text" name="ownerUser" value="<%= selectedTodo?.ownerUser || '' %>" />
+    <!--Due Date-->
+    <div class="settings-stack mb-3">
+        <div class="w-100">
+            <label class="form-label">Due Date</label>
+            <input id="todo-dueDate" type="datetime-local" name="dueDate" class="form-control" value="<%= selectedTodo?.dueDateInput || '' %>" />
+        </div>
     </div>
-  </div>
 
-  <div class="todo-flyout__section">
-    <label class="todo-flyout__label" for="todo-ownerLabel">Owner Label</label>
-    <input id="todo-ownerLabel" class="todo-flyout__input" type="text" name="ownerLabel" value="<%= selectedTodo?.ownerLabel || '' %>" />
-  </div>
+    <input type="hidden" name="ownerType" value="user" />
 
-  <div class="todo-flyout__section">
-    <label class="todo-flyout__label" for="todo-details">Details</label>
-    <textarea id="todo-details" class="todo-flyout__input todo-flyout__textarea" name="details" rows="6"><%= selectedTodo?.details || '' %></textarea>
-  </div>
+    <!--Owner User-->
+    <div class="settings-stack mb-3">
+        <div class="w-100">
+            <label class="form-label">Owner</label>
+            <input type="hidden" name="ownerUser" value="<%= selectedTodo?.ownerUser || '' %>" />
+            <select
+              id="todo-ownerUser"
+              class="form-select"
+              disabled
+            >
+              <% (tenant?.users || []).forEach((user) => { %>
+                <option
+                  value="<%= user.id %>"
+                  <%= (selectedTodo?.ownerUser || '') === user.id ? 'selected' : '' %>
+                >
+                  <%= user.name || user.email || '' %>
+                </option>
+              <% }) %>
+            </select>
+        </div>
+    </div>
 
-  <div class="todo-flyout__footer">
-    <button class="btn btn-primary" type="submit"><%= isNewTodo ? 'Create ToDo' : 'Save Changes' %></button>
-    <a class="btn btn-secondary" href="/todos">Cancel</a>
-  </div>
-</form>
+    <!--Details-->
+    <div class="settings-stack mb-3">
+        <div class="w-100">
+            <label class="form-label">Details</label>
+            <textarea id="todo-details" class="form-control" name="details" rows="6"><%= selectedTodo?.details || '' %></textarea>
+        </div>
+    </div>
+
+    <button class="btn secondary btn-light w-100" type="submit"><%= isNewTodo ? 'Create ToDo' : 'Save Changes' %></button>
+
+  </form>
+</div>

@@ -17,6 +17,14 @@
         <option value="<%= status %>" <%= filters.todoStatus === status ? 'selected' : '' %>><%= status %></option>
       <% }) %>
     </select>
+    <a
+      class="toolbar-button--icon"
+      href="/todos?<%= new URLSearchParams({ todoSearch: filters.todoSearch, todoStatus: filters.todoStatus, todo: 'new' }).toString() %>"
+      aria-label="Create new ToDo"
+      title="Create new ToDo"
+    >
+      <i class="uil uil-plus"></i>
+    </a>
   </form>
 
   <% if (Object.keys(groupedTodos).length) { %>

@@ -58,12 +58,40 @@ function mapTenantContextToSession(tenantContext) {
     name: tenantContext.tenant.name || '',
     slug: tenantContext.tenant.slug || '',
     status: tenantContext.tenant.status || 'active',
+    timeZone: tenantContext.tenant.timeZone || 'EST/EDT',
     role: tenantContext.membership.role || 'member',
     membershipId: tenantContext.membership.id,
     ownerId: Array.isArray(tenantContext.tenant.owner)
       ? tenantContext.tenant.owner[0] || null
       : tenantContext.tenant.owner || null,
   };
+}
+
+function mapTenantMembersToSession(memberships = [], users = []) {
+  const userDirectory = new Map(
+    users
+      .filter((user) => user?.id)
+      .map((user) => [user.id, user])
+  );
+
+  return memberships
+    .map((membership) => {
+      const userId = Array.isArray(membership.user) ? membership.user[0] : membership.user;
+      const user = userDirectory.get(userId);
+      const name = user?.name || user?.email || '';
+
+      if (!userId) {
+        return null;
+      }
+
+      return {
+        id: userId,
+        name,
+        email: user?.email || '',
+        role: membership.role || 'member',
+      };
+    })
+    .filter(Boolean);
 }
 
 function formatChatTimestamp() {
@@ -78,6 +106,7 @@ module.exports = {
   ensureChatSession,
   formatChatTimestamp,
   getSessionSettings,
+  mapTenantMembersToSession,
   mapTenantContextToSession,
   mapUserSettingsRecordToSettings,
 };

@@ -38,6 +38,8 @@ function createPageRouter() {
         const todos = await listTodosForTenant({
           authToken: req.session.auth.token,
           tenantId: req.session.tenant.id,
+          tenantUsers: req.session.tenant.users || [],
+          tenantTimeZone: req.session.tenant.timeZone,
         });
         const isNewTodo = req.query.todo === 'new';
         const selectedTodo = isNewTodo ? {
@@ -48,6 +50,7 @@ function createPageRouter() {
           details: '',
           ownerType: 'user',
           ownerUser: req.session.auth.user.id,
+          ownerName: req.session.auth.user.name || req.session.auth.user.email || '',
           ownerLabel: '',
         } : (todos.find((item) => item.id === req.query.todo) || null);
         req.todosPage = {
