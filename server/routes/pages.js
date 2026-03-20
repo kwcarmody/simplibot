@@ -1,5 +1,5 @@
 const express = require('express');
-const { allRoutes, getFirstAuthorizedRoute, protectedRoutes, renderNotFound, renderRoute, renderSignin, routeFeatureMap } = require('../lib/render');
+const { allRoutes, getFirstAuthorizedRoute, hasTenantSession, protectedRoutes, redirectToSafeEntry, renderNotFound, renderRoute, renderSignin, routeFeatureMap } = require('../lib/render');
 
 function createPageRouter() {
   const router = express.Router();
@@ -20,6 +20,10 @@ function createPageRouter() {
 
     if (protectedRoutes.has(route) && !req.session.auth?.token) {
       return res.redirect('/signin');
+    }
+
+    if (protectedRoutes.has(route) && !hasTenantSession(req)) {
+      return redirectToSafeEntry(req, res);
     }
 
     const requiredFeature = routeFeatureMap[route];

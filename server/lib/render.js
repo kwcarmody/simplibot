@@ -15,6 +15,18 @@ const routeFeatureMap = {
   docs: 'docs',
 };
 
+
+function hasTenantSession(req) {
+  return Boolean(req.session?.tenant?.id);
+}
+
+function redirectToSafeEntry(req, res) {
+  if (!req.session?.auth?.token) {
+    return res.redirect('/signin');
+  }
+  return res.redirect(getFirstAuthorizedRoute(req.session.auth?.authorization?.features || {}));
+}
+
 function getFirstAuthorizedRoute(features = {}) {
   const enabled = normalizeFeatures(features);
   const first = Object.entries(routeFeatureMap).find(([, feature]) => enabled[feature]);
@@ -63,7 +75,9 @@ function renderNotFound(res) {
 module.exports = {
   allRoutes,
   getFirstAuthorizedRoute,
+  hasTenantSession,
   protectedRoutes,
+  redirectToSafeEntry,
   renderNotFound,
   renderRoute,
   renderSignin,
