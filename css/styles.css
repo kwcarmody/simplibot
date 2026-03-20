@@ -1679,19 +1679,3 @@ html.sidebar-minimized .sidebar .sidebar-user {
 }
 
 
-.tenant-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(105, 132, 237, 0.12);
-  color: #d9e1ff;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.tenant-chip-role {
-  opacity: 0.8;
-}

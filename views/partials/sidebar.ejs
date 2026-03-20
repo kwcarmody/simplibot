@@ -4,12 +4,6 @@
     <div class="brand-copy">
       <div class="fw-semibold">Pikori</div>
       <div class="text-secondary small">Agentic Control Surface</div>
-      <% if (tenant?.name) { %>
-        <div class="tenant-chip mt-2">
-          <span><%= tenant.name %></span>
-          <% if (tenant.role) { %><span class="tenant-chip-role"><%= tenant.role %></span><% } %>
-        </div>
-      <% } %>
     </div>
   </div>
 </div>
@@ -28,8 +22,7 @@
     <div class="sidebar-avatar">KC</div>
     <div class="footer-copy">
       <div class="fw-semibold"><%= profile.fullName %></div>
-      <div class="text-secondary small"><%= profile.role %></div>
-      <% if (tenant?.slug) { %><div class="text-secondary small">Tenant: <%= tenant.slug %></div><% } %>
+      <div class="text-secondary small"><%= tenant?.name || profile.role %></div>
     </div>
   </a>
   <div class="sidebar-footer-actions">
