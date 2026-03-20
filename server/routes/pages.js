@@ -39,10 +39,21 @@ function createPageRouter() {
           authToken: req.session.auth.token,
           tenantId: req.session.tenant.id,
         });
-        const selectedTodo = todos.find((item) => item.id === req.query.todo) || null;
+        const isNewTodo = req.query.todo === 'new';
+        const selectedTodo = isNewTodo ? {
+          id: '',
+          title: '',
+          status: 'ToDo',
+          dueDateInput: '',
+          details: '',
+          ownerType: 'user',
+          ownerUser: req.session.auth.user.id,
+          ownerLabel: '',
+        } : (todos.find((item) => item.id === req.query.todo) || null);
         req.todosPage = {
           todos,
           selectedTodo,
+          isNewTodo,
         };
       } catch (error) {
         console.error(error);

@@ -1714,3 +1714,32 @@ html.sidebar-minimized .sidebar .sidebar-user {
     grid-template-columns: 1fr;
   }
 }
+
+
+.toolbar-button--icon {
+  width: 40px;
+  justify-content: center;
+  font-size: 1.2rem;
+  text-decoration: none;
+}
+
+.drawer-shell {
+  display: none;
+}
+
+.drawer-shell.open {
+  display: block;
+}
+
+.drawer-close {
+  color: inherit;
+  text-decoration: none;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.drawer-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}

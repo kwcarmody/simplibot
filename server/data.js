@@ -432,6 +432,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
     },
     docs: extras.docs || null,
     tenant: extras.tenant || null,
+    isNewTodo: Boolean(extras.isNewTodo),
   };
 }
 
