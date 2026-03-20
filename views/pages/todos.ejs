@@ -56,3 +56,56 @@
     <div class="empty-state">No todos match the current search and filter.</div>
   <% } %>
 </section>
+
+
+  <div class="surface-card todo-editor-card mt-4">
+    <div class="surface-label"><%= selectedTodo ? 'Edit ToDo' : 'New ToDo' %></div>
+    <form class="todo-editor-form" method="post" action="/todos/save">
+      <input type="hidden" name="todoId" value="<%= selectedTodo?.id || '' %>" />
+      <div class="form-row-grid">
+        <label>
+          <span>Title</span>
+          <input type="text" name="title" value="<%= selectedTodo?.title || '' %>" required />
+        </label>
+        <label>
+          <span>Status</span>
+          <select name="status">
+            <% ['ToDo','Working','Blocked','Done','Archived'].forEach((statusOption) => { %>
+              <option value="<%= statusOption %>" <%= (selectedTodo?.status || 'ToDo') === statusOption ? 'selected' : '' %>><%= statusOption %></option>
+            <% }) %>
+          </select>
+        </label>
+      </div>
+      <div class="form-row-grid">
+        <label>
+          <span>Due Date</span>
+          <input type="datetime-local" name="dueDate" value="<%= selectedTodo?.dueDateInput || '' %>" />
+        </label>
+        <label>
+          <span>Owner Type</span>
+          <select name="ownerType">
+            <option value="user" <%= (selectedTodo?.ownerType || 'user') === 'user' ? 'selected' : '' %>>user</option>
+            <option value="bot" <%= selectedTodo?.ownerType === 'bot' ? 'selected' : '' %>>bot</option>
+          </select>
+        </label>
+      </div>
+      <div class="form-row-grid">
+        <label>
+          <span>Owner User ID</span>
+          <input type="text" name="ownerUser" value="<%= selectedTodo?.ownerUser || '' %>" />
+        </label>
+        <label>
+          <span>Owner Label</span>
+          <input type="text" name="ownerLabel" value="<%= selectedTodo?.ownerLabel || '' %>" />
+        </label>
+      </div>
+      <label>
+        <span>Details</span>
+        <textarea name="details" rows="4"><%= selectedTodo?.details || '' %></textarea>
+      </label>
+      <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-primary" type="submit"><%= selectedTodo ? 'Save Changes' : 'Create ToDo' %></button>
+        <% if (selectedTodo) { %><a class="btn btn-secondary" href="/todos">Reset</a><% } %>
+      </div>
+    </form>
+  </div>

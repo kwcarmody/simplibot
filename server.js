@@ -6,6 +6,7 @@ const { createSettingsRouter } = require('./server/routes/settings');
 const { createChatRouter } = require('./server/routes/chat');
 const { createPageRouter } = require('./server/routes/pages');
 const { createDocsRouter } = require('./server/routes/docs');
+const { createTodosRouter } = require('./server/routes/todos');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -38,6 +39,7 @@ app.use(createAuthRouter());
 app.use(createSettingsRouter());
 app.use(createChatRouter());
 app.use(createDocsRouter());
+app.use(createTodosRouter());
 app.use(createPageRouter());
 
 if (require.main === module) {
