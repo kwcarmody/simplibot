@@ -6,7 +6,7 @@
   <a class="todo-flyout__close" href="/todos" aria-label="Close ToDo flyout">×</a>
 </div>
 
-<form class="todo-flyout__body" method="post" action="/todos/save">
+<form method="post" class="todo-flyout__body" method="post" action="/todos/save">
   <input type="hidden" name="todoId" value="<%= selectedTodo?.id || '' %>" />
 
   <div class="todo-flyout__section">
