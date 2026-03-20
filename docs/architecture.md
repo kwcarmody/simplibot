@@ -20,7 +20,13 @@ The app is not a client-side SPA in the primary implementation, although some be
 ## Main Files
 
 - `server.js`
-  Main application entry point.
+  Main application entry point and route registration.
+- `server/routes/*.js`
+  Route handlers split by concern.
+- `server/services/model.js`
+  Model connection testing and chat reply generation.
+- `server/prompts/chat.js`
+  Chat prompt assembly.
 - `server/pocketbase.js`
   PocketBase integration helpers.
 - `server/data.js`

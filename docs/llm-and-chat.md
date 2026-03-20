@@ -48,12 +48,15 @@ Responsibilities:
 
 ## Prompt Assembly
 
-Prompt construction currently happens in:
+Prompt construction now happens in:
 
-- `server.js`
+- `server/prompts/chat.js`
+  functions: `buildChatSystemPrompt(...)` and `buildChatMessages(...)`
+
+Model calling remains in:
+
+- `server/services/model.js`
   function: `generateChatReply(...)`
-
-This is the current central place where model prompts are built.
 
 ## Persona And Memory Context
 
@@ -135,10 +138,3 @@ That allows compatibility with both Ollama-style and OpenAI-like chat response s
 - Chat history is session-scoped, not durable across logout.
 - There is not yet a server-side prompt templating layer beyond `generateChatReply(...)`.
 
-## Recommended Next Step
-
-If prompt behavior becomes more sophisticated, move prompt construction into a dedicated module such as:
-
-- `server/prompts/chat.js`
-
-That will make prompt composition easier to test and evolve.
