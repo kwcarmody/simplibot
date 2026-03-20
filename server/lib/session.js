@@ -47,6 +47,25 @@ function mapUserSettingsRecordToSettings(record) {
   };
 }
 
+
+function mapTenantContextToSession(tenantContext) {
+  if (!tenantContext?.membership || !tenantContext?.tenant) {
+    return null;
+  }
+
+  return {
+    id: tenantContext.tenant.id,
+    name: tenantContext.tenant.name || '',
+    slug: tenantContext.tenant.slug || '',
+    status: tenantContext.tenant.status || 'active',
+    role: tenantContext.membership.role || 'member',
+    membershipId: tenantContext.membership.id,
+    ownerId: Array.isArray(tenantContext.tenant.owner)
+      ? tenantContext.tenant.owner[0] || null
+      : tenantContext.tenant.owner || null,
+  };
+}
+
 function formatChatTimestamp() {
   return new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
@@ -59,5 +78,6 @@ module.exports = {
   ensureChatSession,
   formatChatTimestamp,
   getSessionSettings,
+  mapTenantContextToSession,
   mapUserSettingsRecordToSettings,
 };

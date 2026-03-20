@@ -49,6 +49,34 @@ Example `features` shape:
 }
 ```
 
+
+### `tenants`
+
+Purpose:
+
+- shared workspace boundary for tenant-scoped resources
+
+Important fields:
+
+- `name`
+- `slug`
+- `owner` relation
+- `status`
+
+### `tenant_memberships`
+
+Purpose:
+
+- links users to tenants
+- stores tenant role and active membership status
+
+Important fields:
+
+- `tenant` relation
+- `user` relation
+- `role`
+- `active`
+
 ### `user_settings`
 
 Purpose:
@@ -95,6 +123,23 @@ More fields can be added over time for tools/channels/etc.
   }
 }
 ```
+
+
+### `req.session.tenant`
+
+```js
+{
+  id,
+  name,
+  slug,
+  status,
+  role,
+  membershipId,
+  ownerId
+}
+```
+
+This stores the active tenant context resolved during sign-in.
 
 ### `req.session.ui`
 

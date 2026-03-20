@@ -429,6 +429,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
       error: "",
     },
     docs: extras.docs || null,
+    tenant: extras.tenant || null,
   };
 }
 
