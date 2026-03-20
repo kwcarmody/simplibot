@@ -1,4 +1,4 @@
-<div class="drawer-shell <%= (selectedTodo || isNewTodo) ? "open" : "" %>">
+<div class="drawer-shell <%= (selectedTodo || isNewTodo) ? 'open' : '' %>">
   <div class="drawer-header">
     <div>
       <div class="surface-label"><%= isNewTodo ? 'New ToDo' : 'ToDo Details' %></div>
@@ -8,62 +8,49 @@
   </div>
 
   <% if (selectedTodo || isNewTodo) { %>
-    <form class="todo-flyout-form" method="post" action="/todos/save">
+    <form method="post" action="/todos/save">
       <input type="hidden" name="todoId" value="<%= selectedTodo?.id || '' %>" />
 
-      <div class="surface-card drawer-card-stack-item">
-        <div class="surface-label">Core</div>
-        <label>
-          <span>Title</span>
-          <input type="text" name="title" value="<%= selectedTodo?.title || '' %>" placeholder="What needs to get done?" required />
-        </label>
-
-        <div class="form-row-grid mt-3">
-          <label>
-            <span>Status</span>
-            <select name="status">
-              <% ['ToDo','Working','Blocked','Done','Archived'].forEach((statusOption) => { %>
-                <option value="<%= statusOption %>" <%= (selectedTodo?.status || 'ToDo') === statusOption ? 'selected' : '' %>><%= statusOption %></option>
-              <% }) %>
-            </select>
-          </label>
-
-          <label>
-            <span>Due Date</span>
-            <input type="datetime-local" name="dueDate" value="<%= selectedTodo?.dueDateInput || '' %>" />
-          </label>
-        </div>
+      <div class="surface-card">
+        <div class="surface-label">Title</div>
+        <input type="text" name="title" value="<%= selectedTodo?.title || '' %>" placeholder="Enter todo title" required />
       </div>
 
-      <div class="surface-card drawer-card-stack-item">
-        <div class="surface-label">Ownership</div>
-        <div class="form-row-grid">
-          <label>
-            <span>Owner Type</span>
-            <select name="ownerType">
-              <option value="user" <%= (selectedTodo?.ownerType || 'user') === 'user' ? 'selected' : '' %>>user</option>
-              <option value="bot" <%= selectedTodo?.ownerType === 'bot' ? 'selected' : '' %>>bot</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Owner User ID</span>
-            <input type="text" name="ownerUser" value="<%= selectedTodo?.ownerUser || '' %>" placeholder="Defaults to current user" />
-          </label>
-        </div>
-
-        <label class="mt-3">
-          <span>Owner Label</span>
-          <input type="text" name="ownerLabel" value="<%= selectedTodo?.ownerLabel || '' %>" placeholder="Used for bot/system owners" />
-        </label>
+      <div class="surface-card">
+        <div class="surface-label">Status</div>
+        <select name="status">
+          <% ['ToDo','Working','Blocked','Done','Archived'].forEach((statusOption) => { %>
+            <option value="<%= statusOption %>" <%= (selectedTodo?.status || 'ToDo') === statusOption ? 'selected' : '' %>><%= statusOption %></option>
+          <% }) %>
+        </select>
       </div>
 
-      <div class="surface-card drawer-card-stack-item">
+      <div class="surface-card">
+        <div class="surface-label">Due Date</div>
+        <input type="datetime-local" name="dueDate" value="<%= selectedTodo?.dueDateInput || '' %>" />
+      </div>
+
+      <div class="surface-card">
+        <div class="surface-label">Owner Type</div>
+        <select name="ownerType">
+          <option value="user" <%= (selectedTodo?.ownerType || 'user') === 'user' ? 'selected' : '' %>>user</option>
+          <option value="bot" <%= selectedTodo?.ownerType === 'bot' ? 'selected' : '' %>>bot</option>
+        </select>
+      </div>
+
+      <div class="surface-card">
+        <div class="surface-label">Owner User ID</div>
+        <input type="text" name="ownerUser" value="<%= selectedTodo?.ownerUser || '' %>" placeholder="Defaults to current user" />
+      </div>
+
+      <div class="surface-card">
+        <div class="surface-label">Owner Label</div>
+        <input type="text" name="ownerLabel" value="<%= selectedTodo?.ownerLabel || '' %>" placeholder="Used for bot/system owners" />
+      </div>
+
+      <div class="surface-card">
         <div class="surface-label">Details</div>
-        <label>
-          <span>Description</span>
-          <textarea name="details" rows="6" placeholder="Add context, notes, or implementation details"><%= selectedTodo?.details || '' %></textarea>
-        </label>
+        <textarea name="details" rows="6" placeholder="Add details"><%= selectedTodo?.details || '' %></textarea>
       </div>
 
       <div class="drawer-actions">
