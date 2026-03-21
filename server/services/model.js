@@ -326,6 +326,53 @@ function isLikelyTaskActionRequest({ tools = [], latestUserMessage = '' }) {
     || /\b(add|create|make|mark|update|archive|delete|list|show|find|query|remind)\b/.test(latest);
 }
 
+function looksLikeTaskPlannerFollowupQuestion(text = '') {
+  const normalized = String(text || '').trim().toLowerCase();
+  if (!normalized || !normalized.includes('?')) {
+    return false;
+  }
+
+  return [
+    /\bwhat would you like me to remind you about\b/,
+    /\bwhat would you like the reminder to be about\b/,
+    /\bwhat date or timing phrase\b/,
+    /\bwhat time or day would you like\b/,
+    /\bwhat time or date would you like\b/,
+    /\bwhen would you like\b/,
+    /\bwhat .* due date\b/,
+    /\bwhich task\b/,
+    /\bwhich reminder\b/,
+    /\bwhat status\b/,
+    /\bwhat title\b/,
+    /\bwhat details\b/,
+    /\bmissing due dates\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function isLikelyTaskFollowup({ tools = [], chatMessages = [] }) {
+  const hasTodoManager = tools.some((tool) => tool.toolKey === 'todo-manager' && tool.enabled);
+  if (!hasTodoManager || chatMessages.length < 3) {
+    return false;
+  }
+
+  const latestUser = chatMessages[chatMessages.length - 1];
+  const previousAssistant = chatMessages[chatMessages.length - 2];
+  const priorUser = chatMessages[chatMessages.length - 3];
+
+  if (latestUser?.role !== 'user' || previousAssistant?.role !== 'assistant' || priorUser?.role !== 'user') {
+    return false;
+  }
+
+  if (!looksLikeTaskPlannerFollowupQuestion(previousAssistant.text)) {
+    return false;
+  }
+
+  return isLikelyTaskActionRequest({
+    tools,
+    latestUserMessage: priorUser.text || '',
+  });
+}
+
 function isLikelyWebSearchRequest({ tools = [], latestUserMessage = '' }) {
   const hasWebSearch = tools.some((tool) => tool.toolKey === 'web-search' && tool.enabled);
   if (!hasWebSearch) {
@@ -345,7 +392,7 @@ function isLikelyWebSearchRequest({ tools = [], latestUserMessage = '' }) {
   });
 }
 
-function buildTaskPlannerMessages({ memorySettings, latestUserMessage, todoToolDefinition, now = new Date() }) {
+function buildTaskPlannerMessages({ memorySettings, latestUserMessage, todoToolDefinition, chatMessages = [], now = new Date() }) {
   const today = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -362,6 +409,11 @@ function buildTaskPlannerMessages({ memorySettings, latestUserMessage, todoToolD
   const inputs = Array.isArray(todoToolDefinition?.inputs)
     ? todoToolDefinition.inputs.map((input) => `${input.key}${input.required ? ' (required)' : ''}: ${input.description}`).join('; ')
     : '';
+  const recentConversation = chatMessages
+    .slice(-6)
+    .map((message) => `${message.role}: ${String(message.text || '').trim()}`)
+    .filter(Boolean)
+    .join('\n');
 
   return [
     {
@@ -377,10 +429,15 @@ function buildTaskPlannerMessages({ memorySettings, latestUserMessage, todoToolD
         'Use this exact outer shape:',
         '{"type":"tool_call","tool":"todo-manager","input":{"operations":[...]}}',
         'If required information is missing, ask one concise follow-up question instead of pretending a task was created or updated.',
+        'If the recent conversation already answered your earlier follow-up question, use that answer and continue instead of asking again.',
+        'If you asked for a due date and the user replies with "no due date", "no due date needed", "without a due date", or similar, create the task without dueDateText.',
+        'If the user has not told you what the reminder or task is about, ask a follow-up question. Do not invent a placeholder title, filler details, or dummy dueDateText.',
+        'Never fabricate text such as "Remind me about...", "Please specify...", or placeholder content in title or details fields.',
         'Never claim that a task was created, updated, archived, or queried unless you return a tool call and the tool is executed later.',
         'Preserve the user timing phrase in dueDateText when possible instead of inventing absolute dates unless the phrase is already explicit.',
         `todo-manager description: ${todoToolDefinition?.description || ''}`,
         inputs ? `todo-manager inputs: ${inputs}` : '',
+        recentConversation ? `Recent conversation:\n${recentConversation}` : '',
       ].filter(Boolean).join(' '),
     },
     {
@@ -390,11 +447,12 @@ function buildTaskPlannerMessages({ memorySettings, latestUserMessage, todoToolD
   ];
 }
 
-async function planTodoManagerToolCall({ modelSettings, memorySettings, latestUserMessage, todoToolDefinition, adapter, now }) {
+async function planTodoManagerToolCall({ modelSettings, memorySettings, latestUserMessage, todoToolDefinition, chatMessages = [], adapter, now }) {
   const plannerMessages = buildTaskPlannerMessages({
     memorySettings,
     latestUserMessage,
     todoToolDefinition,
+    chatMessages,
     now,
   });
   logToolDebug('task-planner-request', {
@@ -589,27 +647,55 @@ async function synthesizeWebSearchResult({
     groundedResult,
     now,
   });
-  const finalText = await requestChatCompletion({
-    modelSettings,
-    messages: synthesisMessages,
-  });
+  try {
+    const finalText = await requestChatCompletion({
+      modelSettings,
+      messages: synthesisMessages,
+    });
 
-  logToolDebug('search-synthesis-response', {
-    toolKey: execution.tool.toolKey,
-    text: finalText,
-    groundedResult,
-  });
-
-  return {
-    text: finalText,
-    toolStatePatch: execution.result?.sessionStatePatch ?? null,
-    debug: {
-      toolAttempted: true,
-      toolExecuted: true,
+    logToolDebug('search-synthesis-response', {
       toolKey: execution.tool.toolKey,
-      renderedBy: 'search-synthesis',
-    },
-  };
+      text: finalText,
+      groundedResult,
+    });
+
+    return {
+      text: finalText,
+      toolStatePatch: execution.result?.sessionStatePatch ?? null,
+      debug: {
+        toolAttempted: true,
+        toolExecuted: true,
+        toolKey: execution.tool.toolKey,
+        renderedBy: 'search-synthesis',
+      },
+    };
+  } catch (error) {
+    const fallbackText = execution.service?.formatResultForAssistant
+      ? execution.service.formatResultForAssistant({
+          result: execution.result,
+          latestUserMessage,
+        })
+      : String(execution.result?.message || '').trim();
+
+    logToolDebug('search-synthesis-fallback', {
+      toolKey: execution.tool.toolKey,
+      error: error?.message || String(error),
+      text: fallbackText,
+      groundedResult,
+    });
+
+    return {
+      text: fallbackText,
+      toolStatePatch: execution.result?.sessionStatePatch ?? null,
+      debug: {
+        toolAttempted: true,
+        toolExecuted: true,
+        toolKey: execution.tool.toolKey,
+        renderedBy: 'search-synthesis-fallback',
+        fallbackReason: error?.code || 'search_synthesis_failed',
+      },
+    };
+  }
 }
 
 async function generateChatReply({
@@ -636,7 +722,7 @@ async function generateChatReply({
     return directExecutionResult;
   }
 
-  if (isLikelyTaskActionRequest({ tools, latestUserMessage })) {
+  if (isLikelyTaskActionRequest({ tools, latestUserMessage }) || isLikelyTaskFollowup({ tools, chatMessages })) {
     const todoToolDefinition = getTodoManagerPromptDefinition(tools);
     if (todoToolDefinition) {
       const plannedResponse = await planTodoManagerToolCall({
@@ -644,6 +730,7 @@ async function generateChatReply({
         memorySettings,
         latestUserMessage,
         todoToolDefinition,
+        chatMessages,
         adapter,
         now,
       });

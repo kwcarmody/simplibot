@@ -91,18 +91,40 @@ function isGreetingOnly(value) {
   ].includes(normalized);
 }
 
+function isPersonalOrMetaQuestion(value) {
+  const normalized = normalizeIntentText(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return [
+    /\bwhat(?:'s| is)\s+my\s+name\b/,
+    /\bwho\s+am\s+i\b/,
+    /\bdo\s+you\s+know\s+my\s+name\b/,
+    /\bwhere\s+do\s+i\s+live\b/,
+    /\bdo\s+you\s+know\s+where\s+i\s+live\b/,
+    /\bhow\s+are\s+you\b/,
+    /\bhow\s+are\s+you\s+feeling\b/,
+    /\bhow\s+do\s+you\s+feel\b/,
+    /\byour\s+name\b/,
+    /\bmy\s+name\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
 function hasStrongSearchIntent(value) {
   const normalized = normalizeIntentText(value);
 
-  if (!normalized || isGreetingOnly(normalized)) {
+  if (!normalized || isGreetingOnly(normalized) || isPersonalOrMetaQuestion(normalized)) {
     return false;
   }
 
   const searchIntentPatterns = [
     /\b(find|search|look up|lookup|google|check)\b/,
+    /\b(is there|are there)\s+(?:a|an|any)\b/,
     /\b(current|latest|recent|today|right now|upcoming|near me|nearby)\b/,
     /\b(events?|concerts?|shows?|performances?|things to do|tour|tours|touring)\b/,
-    /\b(weather|news|price|prices|availability|schedule|hours|tickets?)\b/,
+    /\b(weather|news|price|prices|availability|schedule|hours|tickets?|authors?|writers?|books?)\b/,
     /\b(what are|what's|what is|where can i|which are|show me|how much|how many|how big|how tall|how long|how heavy)\b/,
     /\b(restaurants?|hotels?|flights?|music|classical music|llms?|models?|weight|size|length|height|lifespan)\b/,
     /\b(who is|tell me about|information about|background on|learn about)\b/,
@@ -116,7 +138,7 @@ function shouldAutoExecute({ latestUserMessage, input = {} }) {
   const latestMessage = String(latestUserMessage || '').trim();
   const query = String(input.query || '').trim();
 
-  if (isGreetingOnly(latestMessage)) {
+  if (isGreetingOnly(latestMessage) || isPersonalOrMetaQuestion(latestMessage)) {
     return false;
   }
 

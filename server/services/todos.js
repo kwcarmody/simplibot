@@ -86,6 +86,7 @@ function formatDueDate(value, tenantTimeZone = DEFAULT_TIME_ZONE_LABEL) {
     timeZone: resolveTenantTimeZone(tenantTimeZone),
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   }).format(date);

@@ -11,6 +11,16 @@
     <div class="search-field">
       <span class="search-icon" aria-hidden="true"><i class="uil uil-search"></i></span>
       <input name="todoSearch" class="form-control" placeholder="Search todos" value="<%= filters.todoSearch %>" />
+      <% if (filters.todoSearch) { %>
+        <a
+          class="search-clear"
+          href="/todos?<%= new URLSearchParams({ todoStatus: filters.todoStatus }).toString() %>"
+          aria-label="Clear search"
+          title="Clear search"
+        >
+          <i class="uil uil-times"></i>
+        </a>
+      <% } %>
     </div>
     <select name="todoStatus" class="form-select" style="max-width: 220px;" onchange="this.form.submit()">
       <% ["All", "Done", "ToDo", "Working", "Blocked", "Archived"].forEach((status) => { %>

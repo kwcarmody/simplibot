@@ -83,6 +83,7 @@ function getPromptDefinition({ tool }) {
       'Treat next Monday or next Tuesday the same unless the user clearly intends a different week.',
       'When the user gives a natural timing phrase, preserve that phrase in dueDateText instead of inventing a task id or pretending the task was created.',
       'Ordinal calendar dates like April 30th, May 1st, June 2nd, and July 3rd are valid date phrases and should be preserved in dueDateText.',
+      'Same-day phrases like this morning, this afternoon, this evening, and tonight are valid dueDateText values.',
     ].join(' '),
     autonomous: Boolean(tool.autonomous),
     inputs: [
@@ -101,6 +102,7 @@ function getPromptDefinition({ tool }) {
           'Weekday-only dueDateText values like Monday, Tuesday, or Friday should mean the next upcoming occurrence of that weekday.',
           'If the user gives timing language such as Wed at 4 pm, this coming Friday, in 2 months, tomorrow at 3 pm, or April 4th, include that timing phrase in dueDateText.',
           'Ordinal month-day phrases like April 30th or October 1st should be passed through in dueDateText.',
+          'Same-day phrases like this morning, this afternoon, this evening, and tonight should be passed through in dueDateText.',
         ].join(' '),
         required: true,
       },
@@ -118,6 +120,42 @@ function shouldAutoExecute({ input = {} }) {
 
 function normalizeText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function isNoDueDatePhrase(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return [
+    'no due date',
+    'no duedate',
+    'without a due date',
+    'without due date',
+    'none',
+    'no date',
+    'no deadline',
+    'no reminder time',
+    'unscheduled',
+  ].includes(normalized);
+}
+
+function isPlaceholderCreateTitle(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return [
+    'remind me',
+    'remind me about',
+    'todo',
+    'task',
+    'reminder',
+    'new task',
+    'new reminder',
+  ].includes(normalized) || /please specify|what would you like me/i.test(value);
 }
 
 function normalizeStatus(value) {
@@ -223,6 +261,31 @@ function parseTimeFromText(value) {
   return { hour, minute };
 }
 
+function parseSameDayTimePhrase(value) {
+  const normalized = normalizeRelativeDatePhrase(value);
+  if (!normalized) {
+    return null;
+  }
+
+  if (/\bthis morning\b|\bmorning\b/.test(normalized)) {
+    return { hour: 9, minute: 0 };
+  }
+
+  if (/\bthis afternoon\b|\bafternoon\b/.test(normalized)) {
+    return { hour: 15, minute: 0 };
+  }
+
+  if (/\bthis evening\b|\bevening\b/.test(normalized)) {
+    return { hour: 18, minute: 0 };
+  }
+
+  if (/\btonight\b/.test(normalized)) {
+    return { hour: 20, minute: 0 };
+  }
+
+  return null;
+}
+
 function normalizeRelativeDatePhrase(value) {
   const normalized = normalizeText(value).toLowerCase();
   if (!normalized) {
@@ -244,6 +307,16 @@ function resolveRelativeDateToken(token, timeZone) {
   const normalized = normalizeRelativeDatePhrase(token);
 
   if (normalized === 'today') {
+    return { year: now.year, month: now.month, day: now.day };
+  }
+
+  if (normalized === 'tonight'
+    || normalized === 'this morning'
+    || normalized === 'morning'
+    || normalized === 'this afternoon'
+    || normalized === 'afternoon'
+    || normalized === 'this evening'
+    || normalized === 'evening') {
     return { year: now.year, month: now.month, day: now.day };
   }
 
@@ -483,10 +556,17 @@ function parseNaturalDueDate(dueDateText, tenantTimeZoneLabel) {
       .replace(/\bon\s+/gi, '')
   );
   const timeZone = resolveTenantTimeZone(tenantTimeZoneLabel);
-  const relativeDate = resolveRelativeDateToken(normalizedWithoutTime.replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/i, '').trim(), timeZone);
-  const monthDate = parseMonthDateToken(normalizedWithoutTime.replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/i, '').trim(), timeZone);
-  const { hour, minute } = parseTimeFromText(normalized);
-  const dateParts = relativeDate || monthDate;
+  const explicitTimeMatch = /\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/i.test(normalized);
+  const dateToken = normalizedWithoutTime.replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/i, '').trim();
+  const relativeDate = resolveRelativeDateToken(dateToken, timeZone);
+  const monthDate = parseMonthDateToken(dateToken, timeZone);
+  const today = getNowInTimeZone(timeZone);
+  const implicitToday = explicitTimeMatch && !dateToken
+    ? { year: today.year, month: today.month, day: today.day }
+    : null;
+  const parsedTime = explicitTimeMatch ? parseTimeFromText(normalized) : (parseSameDayTimePhrase(normalizedWithoutTime) || parseTimeFromText(normalized));
+  const { hour, minute } = parsedTime;
+  const dateParts = relativeDate || monthDate || implicitToday;
 
   if (!dateParts) {
     return { iso: null, display: '', ambiguous: true };
@@ -607,11 +687,11 @@ function buildTaskLine(task) {
 
 async function executeCreateOperation(operation, context) {
   const title = normalizeText(operation.title);
-  if (!title) {
+  if (!title || isPlaceholderCreateTitle(title)) {
     return {
       ok: false,
       action: 'create_task',
-      message: 'create_task requires a title.',
+      message: 'create_task requires a real task title from the user.',
     };
   }
 
@@ -625,8 +705,11 @@ async function executeCreateOperation(operation, context) {
   }
 
   const dueDateText = normalizeText(operation.dueDateText);
-  const dueDate = dueDateText ? parseNaturalDueDate(dueDateText, context.tenantTimeZone) : { iso: null, display: '', ambiguous: false };
-  if (dueDateText && (dueDate.ambiguous || !dueDate.iso)) {
+  const shouldClearDueDate = isNoDueDatePhrase(dueDateText);
+  const dueDate = dueDateText && !shouldClearDueDate
+    ? parseNaturalDueDate(dueDateText, context.tenantTimeZone)
+    : { iso: null, display: '', ambiguous: false };
+  if (dueDateText && !shouldClearDueDate && (dueDate.ambiguous || !dueDate.iso)) {
     return {
       ok: false,
       action: 'create_task',
@@ -640,7 +723,7 @@ async function executeCreateOperation(operation, context) {
       tenant: context.tenantId,
       title,
       status,
-      dueDate: dueDate.iso || null,
+      dueDate: shouldClearDueDate ? null : (dueDate.iso || null),
       details: normalizeText(operation.details),
       ownerType: 'user',
       ownerUser: context.currentUserId,

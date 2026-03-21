@@ -732,6 +732,29 @@ html.sidebar-minimized .sidebar .sidebar-user {
 
 .search-field .form-control {
   padding-left: 42px;
+  min-height: 40px;
+}
+
+.search-field .search-clear {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 255, 255, 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  line-height: 1;
+}
+
+.search-field .search-clear:hover,
+.search-field .search-clear:focus {
+  color: #ffffff;
+}
+
+.search-field:has(.search-clear) .form-control {
+  padding-right: 42px;
 }
 
 .form-control {
