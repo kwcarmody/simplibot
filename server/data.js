@@ -26,10 +26,19 @@ const initialState = {
   },
   settings: {
     model: {
+      selectedId: "",
       provider: "None",
       model: "",
+      modelName: "",
       apiKey: "",
       endpoint: "",
+      adapterKey: "",
+      apiType: "",
+      contextWindow: 0,
+      maxTokens: 0,
+      thinking: false,
+      supportsTools: false,
+      input: "",
     },
     memory: {
       enabled: false,
@@ -427,6 +436,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
     selectedChannelConfig: state.channels.find((item) => item.id === query.configureChannel) || null,
     showMemoryDrawer: route === "settings" && query.drawer === "memory",
     auth,
+    models: extras.models || [],
     signin: extras.signin || {
       email: "",
       error: "",

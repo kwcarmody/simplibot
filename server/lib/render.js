@@ -52,6 +52,7 @@ function renderRoute(req, res, route) {
   const viewModel = getViewModel(route, req.query, req.session.auth || null, {
     chatMessages: req.session.chat?.messages || [],
     settingsOverride: req.session.ui?.settings || null,
+    models: req.settingsPage?.models || null,
     docs: req.docsPage || null,
     tenant: req.session.tenant || null,
     tools: req.toolsPage?.tools || null,

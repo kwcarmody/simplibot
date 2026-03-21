@@ -323,28 +323,63 @@
           });
         }
 
-        const modelProviderSelect = document.querySelector("[data-model-provider]");
+        const modelSelect = document.querySelector("[data-model-select]");
+        const modelSettingsForm = document.querySelector("#model-settings-form");
         const updateModelSettingsUI = () => {
-          if (!modelProviderSelect) {
-            return;
+          if (!modelSelect) {
+            return null;
           }
 
-          const provider = modelProviderSelect.value;
-          document.querySelectorAll("[data-model-provider-section]").forEach((section) => {
-            const matches = section.dataset.modelProviderSection === provider;
-            section.classList.toggle("d-none", !matches);
-            section.querySelectorAll("input, select, textarea").forEach((field) => {
-              field.disabled = !matches;
-            });
-          });
+          const option = modelSelect.options[modelSelect.selectedIndex];
+          const hasModel = Boolean(option && option.value);
+          const values = {
+            provider: hasModel ? option.dataset.provider || "" : "",
+            modelId: hasModel ? option.dataset.modelId || "" : "",
+            adapterKey: hasModel ? option.dataset.adapterKey || "" : "",
+            endpoint: hasModel ? option.dataset.baseUrl || "" : "",
+            apiKey: hasModel ? option.dataset.apiKey || "" : "",
+            input: hasModel ? option.dataset.input || "" : "",
+            apiType: hasModel ? option.dataset.apiType || "" : "",
+            contextWindow: hasModel ? option.dataset.contextWindow || "0" : "0",
+            maxTokens: hasModel ? option.dataset.maxTokens || "0" : "0",
+            thinking: hasModel && option.dataset.thinking === "true",
+            supportsTools: hasModel && option.dataset.supportsTools === "true",
+          };
+
+          const setValue = (selector, value) => {
+            const field = document.querySelector(selector);
+            if (field) {
+              field.value = value;
+            }
+          };
+
+          setValue("#model-provider", values.provider);
+          setValue("#model-id", values.modelId);
+          setValue("#model-adapter-key", values.adapterKey);
+          setValue("#model-endpoint", values.endpoint);
+          setValue("#model-api-key", values.apiKey);
+          setValue("#model-input", values.input);
+          setValue("#model-api-type", values.apiType);
+          setValue("#model-context-window", values.contextWindow);
+          setValue("#model-max-tokens", values.maxTokens);
+
+          const thinkingField = document.querySelector("#model-thinking");
+          const supportsToolsField = document.querySelector("#model-supports-tools");
+          if (thinkingField) {
+            thinkingField.checked = values.thinking;
+          }
+          if (supportsToolsField) {
+            supportsToolsField.checked = values.supportsTools;
+          }
+
+          return values;
         };
 
-        if (modelProviderSelect) {
-          modelProviderSelect.addEventListener("change", updateModelSettingsUI);
+        if (modelSelect) {
+          modelSelect.addEventListener("change", updateModelSettingsUI);
           updateModelSettingsUI();
         }
 
-        const modelSettingsForm = document.querySelector("#model-settings-form");
         if (modelSettingsForm) {
           modelSettingsForm.addEventListener("submit", async (event) => {
             event.preventDefault();
@@ -352,10 +387,7 @@
             const saveButton = modelSettingsForm.querySelector("#model-settings-save");
             const errorBox = modelSettingsForm.querySelector("#model-settings-error");
             const formData = new FormData(modelSettingsForm);
-            const provider = String(formData.get("provider") || "").trim();
-            const model = String(formData.get("model") || "").trim();
-            const endpoint = String(formData.get("endpoint") || "").trim();
-            const apiKey = String(formData.get("apiKey") || "").trim();
+            const modelId = String(formData.get("modelId") || "").trim();
 
             if (errorBox) {
               errorBox.textContent = "";
@@ -363,17 +395,8 @@
             }
 
             const validationError = (() => {
-              if (provider === "None") {
-                return "Choose a provider before saving model settings.";
-              }
-              if (!model) {
+              if (!modelId) {
                 return "Choose a model before saving.";
-              }
-              if (!endpoint) {
-                return "API Endpoint is required.";
-              }
-              if (provider === "Ollama-Cloud" && !apiKey) {
-                return "API Token is required for cloud models.";
               }
               return "";
             })();

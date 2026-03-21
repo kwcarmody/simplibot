@@ -1,5 +1,6 @@
 const express = require('express');
 const { allRoutes, getFirstAuthorizedRoute, hasTenantSession, protectedRoutes, redirectToSafeEntry, renderNotFound, renderRoute, renderSignin, routeFeatureMap } = require('../lib/render');
+const { createClient, listModelRecords } = require('../pocketbase');
 const { listTodosForTenant } = require('../services/todos');
 const { loadToolsForTenantUser } = require('../tools/loader');
 
@@ -80,6 +81,18 @@ function createPageRouter() {
       } catch (error) {
         console.error(error);
         req.toolsPage = { tools: [] };
+      }
+    }
+
+    if (route === 'settings') {
+      try {
+        const client = createClient(req.session.auth.token);
+        req.settingsPage = {
+          models: await listModelRecords(client),
+        };
+      } catch (error) {
+        console.error(error);
+        req.settingsPage = { models: [] };
       }
     }
 

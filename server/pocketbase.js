@@ -6,6 +6,7 @@ const PB_API_BASE = process.env.PB_API_BASE || "https://api.people.engineering";
 const PB_AUTH_COLLECTION = process.env.PB_AUTH_COLLECTION || "users";
 const PB_AUTHZ_COLLECTION = process.env.PB_AUTHZ_COLLECTION || "authorizations";
 const PB_USER_SETTINGS_COLLECTION = process.env.PB_USER_SETTINGS_COLLECTION || "user_settings";
+const PB_MODELS_COLLECTION = process.env.PB_MODELS_COLLECTION || "models";
 const PB_TENANTS_COLLECTION = process.env.PB_TENANTS_COLLECTION || "tenants";
 const PB_TENANT_MEMBERSHIPS_COLLECTION = process.env.PB_TENANT_MEMBERSHIPS_COLLECTION || "tenant_memberships";
 
@@ -44,13 +45,22 @@ async function getAuthorizationRecord(client, userId) {
 
 async function getUserSettingsRecord(client, userId) {
   try {
-    return await client.collection(PB_USER_SETTINGS_COLLECTION).getFirstListItem(`user = "${userId}"`);
+    return await client.collection(PB_USER_SETTINGS_COLLECTION).getFirstListItem(`user = "${userId}"`, {
+      expand: 'model',
+    });
   } catch (error) {
     if (error?.status === 404) {
       return null;
     }
     throw error;
   }
+}
+
+async function listModelRecords(client) {
+  const records = await client.collection(PB_MODELS_COLLECTION).getFullList({
+    sort: 'name,created',
+  });
+  return Array.isArray(records) ? records : [];
 }
 
 async function getTenantMembershipsForUser(client, userId) {
@@ -141,12 +151,14 @@ module.exports = {
   PB_AUTH_COLLECTION,
   PB_AUTHZ_COLLECTION,
   PB_USER_SETTINGS_COLLECTION,
+  PB_MODELS_COLLECTION,
   PB_TENANTS_COLLECTION,
   PB_TENANT_MEMBERSHIPS_COLLECTION,
   createClient,
   signInWithPassword,
   getAuthorizationRecord,
   getUserSettingsRecord,
+  listModelRecords,
   getTenantMembershipsForUser,
   getActiveTenantMembers,
   getUsersByIds,

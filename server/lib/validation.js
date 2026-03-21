@@ -1,14 +1,14 @@
-function validateModelSettings({ provider, model, endpoint, apiKey }) {
-  if (provider === 'None') {
-    return 'Choose a provider before saving model settings.';
-  }
-  if (!model) {
+function validateModelSettings({ modelId, provider, model, endpoint, apiKey }) {
+  if (!modelId && (!provider || provider === 'None')) {
     return 'Choose a model before saving.';
   }
-  if (!endpoint) {
+  if (!modelId && !model) {
+    return 'Choose a model before saving.';
+  }
+  if (!modelId && !endpoint) {
     return 'API Endpoint is required.';
   }
-  if (provider === 'Ollama-Cloud' && !apiKey) {
+  if (!modelId && provider === 'Ollama-Cloud' && !apiKey) {
     return 'API Token is required for cloud models.';
   }
   return '';

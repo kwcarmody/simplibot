@@ -2,9 +2,9 @@
   <header class="page-header">
     <div>
       <h1>Settings</h1>
-      <p class="page-subtitle">Configure model, memory, tool, and channel settings using frontend-only local state.</p>
+      <p class="page-subtitle">Configure model, memory, tool, and channel settings for your current account.</p>
     </div>
-    <div class="page-badge">Local state only</div>
+    <div class="page-badge">PocketBase-backed</div>
   </header>
 
   <div class="settings-grid">
@@ -17,100 +17,100 @@
         <div class="settings-form-error d-none" id="model-settings-error" role="alert"></div>
         <div class="settings-stack mt-3 mb-3">
           <div class="w-100">
-            <label class="form-label">Provider</label>
-            <select class="form-select" id="model-provider-select" name="provider" data-model-provider>
-              <% ["None", "Ollama-Cloud", "Ollama-Local"].forEach((item) => { %>
-                <option value="<%= item %>" <%= settings.model.provider === item ? 'selected' : '' %>><%= item %></option>
+            <label class="form-label">Model</label>
+            <select class="form-select" id="model-select" name="modelId" data-model-select>
+              <option value="">Select a model</option>
+              <% (models || []).forEach((item) => { %>
+                <option
+                  value="<%= item.id %>"
+                  data-provider="<%= item.provider || '' %>"
+                  data-model-id="<%= item.modelId || '' %>"
+                  data-name="<%= item.name || '' %>"
+                  data-adapter-key="<%= item.adapterKey || '' %>"
+                  data-base-url="<%= item.baseUrl || '' %>"
+                  data-api-key="<%= item.apiKey || '' %>"
+                  data-api-type="<%= item.apiType || '' %>"
+                  data-context-window="<%= Number.isFinite(Number(item.contextWindow)) ? Number(item.contextWindow) : 0 %>"
+                  data-max-tokens="<%= Number.isFinite(Number(item.maxTokens)) ? Number(item.maxTokens) : 0 %>"
+                  data-thinking="<%= item.thinking ? 'true' : 'false' %>"
+                  data-supports-tools="<%= item.supportsTools ? 'true' : 'false' %>"
+                  data-input="<%= item.input || '' %>"
+                  <%= settings.model.selectedId === item.id ? 'selected' : '' %>
+                >
+                  <%= item.name || item.modelId || item.id %>
+                </option>
               <% }) %>
             </select>
           </div>
         </div>
-        <div data-model-provider-section="Ollama-Cloud" class="<%= settings.model.provider === 'Ollama-Cloud' ? '' : 'd-none' %>">
-          <div class="settings-stack mb-3">
-            <div class="w-100">
-              <label class="form-label">Model ID</label>
-              <select class="form-select" name="model" data-model-select="Ollama-Cloud">
-                <% ["minimax-m2.7:cloud", "deepseek-v3.2:cloud", "qwen3.5:397b-cloud"].forEach((item) => { %>
-                  <option value="<%= item %>" <%= settings.model.provider === 'Ollama-Cloud' && settings.model.model === item ? 'selected' : '' %>><%= item %></option>
-                <% }) %>
-              </select>
-            </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">Provider</label>
+            <input class="form-control" id="model-provider" value="<%= settings.model.provider %>" readonly />
           </div>
- 
-          <div class="settings-stack mb-3">
-            <div class="w-100">
-              <label class="form-label">API Endpoint</label>
-              <input class="form-control" name="endpoint" value="<%= settings.model.provider === 'Ollama-Cloud' ? settings.model.endpoint : '' %>" />
-            </div>
-          </div>
-
-          <div class="settings-stack mb-3">
-            <div class="w-100">
-              <label class="form-label">API Token</label>
-              <input class="form-control" name="apiKey" value="<%= settings.model.provider === 'Ollama-Cloud' ? settings.model.apiKey : '' %>" />
-            </div>
-          </div>
-
-          <div class="settings-stack mb-3">
-            <div class="w-100">
-              <label class="form-label">Thinking</label>
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" checked/>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-stack mb-3">
-            <div class="w-100">
-              <label class="form-label">Tools</label>
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" checked/>
-              </div>
-            </div>
-          </div>
-          
-          <div class="settings-stack mb-3">
-            <div class="w-100">
-              <label class="form-label">API Type</label>
-              <select class="form-select" name="model" data-model-select="Ollama-Cloud">
-                  <option value="Open AI Completions"></option>
-              </select>
-            </div>
-          </div>
-
-          <div class="settings-stack mb-3">
-            <div class="w-100">
-              <label class="form-label">Context Window</label>
-              <input class="form-control" name="apiKey" value="0" />
-            </div>
-          </div>
-          
-          <div class="settings-stack mb-3">
-            <div class="w-100">
-              <label class="form-label">Max Tokens</label>
-              <input class="form-control" name="apiKey" value="0" />
-            </div>
-          </div>
-
-          
-
         </div>
-        <div data-model-provider-section="Ollama-Local" class="<%= settings.model.provider === 'Ollama-Local' ? '' : 'd-none' %>">
-          <div class="settings-stack mb-3">
-            <div class="w-100">
-              <label class="form-label">Model</label>
-              <select class="form-select" name="model" data-model-select="Ollama-Local">
-                <% ["phi4-mini", "qwen3:8b"].forEach((item) => { %>
-                  <option value="<%= item %>" <%= settings.model.provider === 'Ollama-Local' && settings.model.model === item ? 'selected' : '' %>><%= item %></option>
-                <% }) %>
-              </select>
-            </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">Model ID</label>
+            <input class="form-control" id="model-id" value="<%= settings.model.model %>" readonly />
           </div>
-          <div class="settings-stack">
-            <div class="w-100">
-              <label class="form-label">API Endpoint</label>
-              <input class="form-control" name="endpoint" value="<%= settings.model.provider === 'Ollama-Local' ? settings.model.endpoint : '' %>" />
-            </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">Adapter Key</label>
+            <input class="form-control" id="model-adapter-key" value="<%= settings.model.adapterKey %>" readonly />
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">API Endpoint</label>
+            <input class="form-control" id="model-endpoint" value="<%= settings.model.endpoint %>" readonly />
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">API Token</label>
+            <input class="form-control" id="model-api-key" value="<%= settings.model.apiKey %>" readonly />
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">Input</label>
+            <input class="form-control" id="model-input" value="<%= settings.model.input %>" readonly />
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">API Type</label>
+            <input class="form-control" id="model-api-type" value="<%= settings.model.apiType %>" readonly />
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">Context Window</label>
+            <input class="form-control" id="model-context-window" value="<%= settings.model.contextWindow %>" readonly />
+          </div>
+        </div>
+        <div class="settings-stack mb-3">
+          <div class="w-100">
+            <label class="form-label">Max Tokens</label>
+            <input class="form-control" id="model-max-tokens" value="<%= settings.model.maxTokens %>" readonly />
+          </div>
+        </div>
+        <div class="toggle-row mb-3">
+          <div>
+            <div class="fw-semibold">Thinking</div>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" id="model-thinking" type="checkbox" <%= settings.model.thinking ? 'checked' : '' %> disabled />
+          </div>
+        </div>
+        <div class="toggle-row">
+          <div>
+            <div class="fw-semibold">Supports tools</div>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" id="model-supports-tools" type="checkbox" <%= settings.model.supportsTools ? 'checked' : '' %> disabled />
           </div>
         </div>
       </form>

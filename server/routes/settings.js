@@ -1,7 +1,8 @@
 const express = require('express');
-const { createClient, saveUserSettingsRecord } = require('../pocketbase');
+const { createClient, listModelRecords, saveUserSettingsRecord } = require('../pocketbase');
 const { validateMemorySettings, validateModelSettings } = require('../lib/validation');
 const { testModelConnection } = require('../services/model');
+const { mapUserSettingsRecordToSettings } = require('../lib/session');
 
 function createSettingsRouter() {
   const router = express.Router();
@@ -11,35 +12,52 @@ function createSettingsRouter() {
       return res.status(401).json({ ok: false, error: 'Sign in required.' });
     }
 
-    const provider = String(req.body.provider || 'None').trim();
-    const model = String(req.body.model || '').trim();
-    const endpoint = String(req.body.endpoint || '').trim();
-    const apiKey = String(req.body.apiKey || '').trim();
+    const selectedModelId = String(req.body.modelId || '').trim();
 
-    const validationError = validateModelSettings({ provider, model, endpoint, apiKey });
+    const validationError = validateModelSettings({ modelId: selectedModelId });
     if (validationError) {
       return res.status(400).json({ ok: false, error: validationError });
     }
 
     try {
-      await testModelConnection({ provider, model, endpoint, apiKey });
       const client = createClient(req.session.auth.token);
+      const availableModels = await listModelRecords(client);
+      const selectedModel = availableModels.find((record) => record.id === selectedModelId);
+
+      if (!selectedModel) {
+        return res.status(400).json({ ok: false, error: 'Selected model could not be found.' });
+      }
+
+      await testModelConnection({
+        provider: selectedModel.provider,
+        model: selectedModel.modelId,
+        endpoint: selectedModel.baseUrl,
+        apiKey: selectedModel.apiKey,
+        apiType: selectedModel.apiType,
+      });
+
       await saveUserSettingsRecord(client, req.session.auth.user.id, {
-        modelProvider: provider,
-        modelName: model,
-        modelEndpoint: endpoint,
-        modelApiToken: apiKey,
+        model: selectedModel.id,
       });
 
       req.session.ui = {
         ...(req.session.ui || {}),
         settings: {
           ...((req.session.ui && req.session.ui.settings) || {}),
-          model: { provider, model, endpoint, apiKey },
+          model: mapUserSettingsRecordToSettings({
+            model: selectedModel.id,
+            expand: {
+              model: selectedModel,
+            },
+          }).model,
         },
       };
 
-      return res.json({ ok: true, message: 'Model connected.' });
+      return res.json({
+        ok: true,
+        message: 'Model connected.',
+        model: req.session.ui.settings.model,
+      });
     } catch (error) {
       return res.status(502).json({ ok: false, error: 'Model connection failed.', details: error.message });
     }

@@ -2,10 +2,19 @@ function getSessionSettings(req) {
   const uiSettings = req.session.ui?.settings || {};
   return {
     model: {
+      selectedId: uiSettings.model?.selectedId || '',
       provider: uiSettings.model?.provider || 'None',
       model: uiSettings.model?.model || '',
+      modelName: uiSettings.model?.modelName || '',
       endpoint: uiSettings.model?.endpoint || '',
       apiKey: uiSettings.model?.apiKey || '',
+      adapterKey: uiSettings.model?.adapterKey || '',
+      apiType: uiSettings.model?.apiType || '',
+      contextWindow: Number.isFinite(Number(uiSettings.model?.contextWindow)) ? Number(uiSettings.model.contextWindow) : 0,
+      maxTokens: Number.isFinite(Number(uiSettings.model?.maxTokens)) ? Number(uiSettings.model.maxTokens) : 0,
+      thinking: Boolean(uiSettings.model?.thinking),
+      supportsTools: Boolean(uiSettings.model?.supportsTools),
+      input: uiSettings.model?.input || '',
     },
     memory: {
       enabled: Boolean(uiSettings.memory?.enabled),
@@ -31,12 +40,23 @@ function mapUserSettingsRecordToSettings(record) {
     return null;
   }
 
+  const relatedModel = record.expand?.model || null;
+
   return {
     model: {
-      provider: record.modelProvider || 'None',
-      model: record.modelName || '',
-      endpoint: record.modelEndpoint || '',
-      apiKey: record.modelApiToken || '',
+      selectedId: record.model || relatedModel?.id || '',
+      provider: relatedModel?.provider || record.modelProvider || 'None',
+      model: relatedModel?.modelId || record.modelName || '',
+      modelName: relatedModel?.name || relatedModel?.modelId || record.modelName || '',
+      endpoint: relatedModel?.baseUrl || record.modelEndpoint || '',
+      apiKey: relatedModel?.apiKey || record.modelApiToken || '',
+      adapterKey: relatedModel?.adapterKey || '',
+      apiType: relatedModel?.apiType || '',
+      contextWindow: Number.isFinite(Number(relatedModel?.contextWindow)) ? Number(relatedModel.contextWindow) : 0,
+      maxTokens: Number.isFinite(Number(relatedModel?.maxTokens)) ? Number(relatedModel.maxTokens) : 0,
+      thinking: Boolean(relatedModel?.thinking),
+      supportsTools: Boolean(relatedModel?.supportsTools),
+      input: relatedModel?.input || '',
     },
     memory: {
       enabled: Boolean(record.memoryEnabled),

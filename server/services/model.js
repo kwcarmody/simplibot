@@ -39,8 +39,13 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = MODEL_REQUEST_TIM
   }
 }
 
-function resolveChatEndpoint(endpoint) {
+function resolveChatEndpoint(endpoint, apiType = '') {
   const normalizedEndpoint = endpoint.replace(/\/+$/, '');
+  if (String(apiType || '').trim().toLowerCase() === 'openai-completions') {
+    return /\/v1\/chat\/completions$/i.test(normalizedEndpoint)
+      ? normalizedEndpoint
+      : `${normalizedEndpoint}/v1/chat/completions`;
+  }
   return /\/(api\/chat|v1\/chat\/completions)$/i.test(normalizedEndpoint)
     ? normalizedEndpoint
     : `${normalizedEndpoint}/api/chat`;
@@ -52,11 +57,20 @@ function buildModelHeaders({ provider, apiKey }) {
     'Content-Type': 'application/json',
   };
 
-  if (provider === 'Ollama-Cloud' && apiKey) {
+  if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
   return headers;
+}
+
+function resolveModelAdapterKey(modelSettings = {}) {
+  if (modelSettings?.adapterKey) {
+    return modelSettings.adapterKey;
+  }
+
+  const modelDefinition = getModelDefinition(modelSettings.model);
+  return modelDefinition?.adapterKey || 'default';
 }
 
 async function requestChatCompletion({ modelSettings, messages }) {
@@ -66,7 +80,7 @@ async function requestChatCompletion({ modelSettings, messages }) {
     messages,
   };
 
-  const response = await fetchWithTimeout(resolveChatEndpoint(modelSettings.endpoint), {
+  const response = await fetchWithTimeout(resolveChatEndpoint(modelSettings.endpoint, modelSettings.apiType), {
     method: 'POST',
     headers: buildModelHeaders({ provider: modelSettings.provider, apiKey: modelSettings.apiKey }),
     body: JSON.stringify(payload),
@@ -85,7 +99,7 @@ async function requestChatCompletion({ modelSettings, messages }) {
 
   logToolDebug('model-response', {
     model: modelSettings.model,
-    endpoint: resolveChatEndpoint(modelSettings.endpoint),
+    endpoint: resolveChatEndpoint(modelSettings.endpoint, modelSettings.apiType),
     lastMessageRole: messages[messages.length - 1]?.role || '',
     content,
   });
@@ -110,7 +124,7 @@ function getEnabledPromptTools(tools = []) {
     .filter(Boolean);
 }
 
-async function tryDirectToolExecution({ tools = [], latestUserMessage = '', toolContext = {}, modelDefinition }) {
+async function tryDirectToolExecution({ tools = [], latestUserMessage = '', toolContext = {}, adapterKey = 'default' }) {
   for (const tool of tools.filter((item) => item?.enabled)) {
     const service = getToolService(tool.serviceKey || tool.toolKey);
     if (!service?.shouldDirectHandle || !service.shouldDirectHandle({
@@ -152,7 +166,7 @@ async function tryDirectToolExecution({ tools = [], latestUserMessage = '', tool
         toolAttempted: true,
         toolExecuted: true,
         toolKey: execution.tool.toolKey,
-        adapter: modelDefinition?.adapterKey || 'default',
+        adapter: adapterKey,
         renderedBy: 'tool-service-direct',
       },
     };
@@ -223,8 +237,8 @@ async function executeToolCall({ toolCall, tools = [], latestUserMessage = '', t
   };
 }
 
-async function testModelConnection({ provider, model, endpoint, apiKey }) {
-  const response = await fetchWithTimeout(resolveChatEndpoint(endpoint), {
+async function testModelConnection({ provider, model, endpoint, apiKey, apiType = '' }) {
+  const response = await fetchWithTimeout(resolveChatEndpoint(endpoint, apiType), {
     method: 'POST',
     headers: buildModelHeaders({ provider, apiKey }),
     body: JSON.stringify({
@@ -272,8 +286,8 @@ async function generateChatReply({
   conversationContext = {},
   toolContext = {},
 }) {
-  const modelDefinition = getModelDefinition(modelSettings.model);
-  const adapter = getModelAdapter(modelDefinition?.adapterKey || 'default');
+  const adapterKey = resolveModelAdapterKey(modelSettings);
+  const adapter = getModelAdapter(adapterKey);
   const promptTools = getEnabledPromptTools(tools).map((tool) => tool.promptDefinition);
   const now = new Date();
 
@@ -282,7 +296,7 @@ async function generateChatReply({
     tools,
     latestUserMessage,
     toolContext,
-    modelDefinition,
+    adapterKey,
   });
   if (directExecutionResult) {
     return directExecutionResult;
@@ -297,7 +311,7 @@ async function generateChatReply({
   });
   logToolDebug('first-pass-request', {
     model: modelSettings.model,
-    adapter: modelDefinition?.adapterKey || 'default',
+    adapter: adapterKey,
     latestUserMessage,
     enabledTools: promptTools.map((tool) => tool.toolKey),
     messageCount: firstPassMessages.length,
@@ -317,7 +331,7 @@ async function generateChatReply({
       debug: {
         toolAttempted: false,
         toolExecuted: false,
-        adapter: modelDefinition?.adapterKey || 'default',
+        adapter: adapterKey,
       },
     };
   }
@@ -348,7 +362,7 @@ async function generateChatReply({
         toolAttempted: true,
         toolExecuted: false,
         deniedTool: parsedResponse.tool,
-        adapter: modelDefinition?.adapterKey || 'default',
+        adapter: adapterKey,
       },
     };
   }
@@ -397,7 +411,7 @@ async function generateChatReply({
         toolAttempted: true,
         toolExecuted: true,
         toolKey: execution.tool.toolKey,
-        adapter: modelDefinition?.adapterKey || 'default',
+        adapter: adapterKey,
         renderedBy: 'tool-service',
       },
     };
@@ -419,7 +433,7 @@ async function generateChatReply({
       toolAttempted: true,
       toolExecuted: true,
       toolKey: execution.tool.toolKey,
-      adapter: modelDefinition?.adapterKey || 'default',
+      adapter: adapterKey,
     },
   };
 }
