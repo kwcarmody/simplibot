@@ -1,6 +1,5 @@
 const {
   createTodo,
-  findTodosForUserByTitle,
   getOwnedTodoById,
   listTodosForTenant,
   parseDateTimeLocalInTenantTimeZone,
@@ -9,6 +8,7 @@ const {
 } = require('../todos');
 
 const VALID_STATUSES = ['ToDo', 'Working', 'Blocked', 'Done', 'Archived'];
+const VALID_ACTIONS = ['create_task', 'update_tasks', 'archive_tasks', 'query_tasks'];
 const MONTH_INDEX = {
   january: 0,
   february: 1,
@@ -32,56 +32,88 @@ const WEEKDAY_INDEX = {
   friday: 5,
   saturday: 6,
 };
+const WEEKDAY_ALIASES = {
+  sun: 'sunday',
+  sunday: 'sunday',
+  mon: 'monday',
+  monday: 'monday',
+  tue: 'tuesday',
+  tues: 'tuesday',
+  tuesday: 'tuesday',
+  wed: 'wednesday',
+  weds: 'wednesday',
+  wednesday: 'wednesday',
+  thu: 'thursday',
+  thur: 'thursday',
+  thurs: 'thursday',
+  thursday: 'thursday',
+  fri: 'friday',
+  friday: 'friday',
+  sat: 'saturday',
+  saturday: 'saturday',
+};
+const WORD_TO_NUMBER = {
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+};
 
 function getPromptDefinition({ tool }) {
   return {
     toolKey: tool.toolKey,
     name: tool.title,
-    description: 'Create personal todos, update todo status, set due dates, and look up task details for your own tasks.',
+    description: [
+      'Manage the current user\'s tasks.',
+      'In this system, tasks, todos, and reminders are the same thing.',
+      'Use this tool to create tasks, update one or more tasks, archive tasks, or query tasks by title, details, status, or due date.',
+      'Prefer sending one tool call with an operations array when the user asks for multiple task changes.',
+      'Interpret weekday-only due dates like Monday or Tuesday as the next upcoming occurrence of that weekday unless the user explicitly says past or gives a specific date.',
+      'For example, if today is Saturday, March 21, 2026, Monday means Monday, March 23, 2026 and Tuesday means Tuesday, March 24, 2026.',
+      'Treat next Monday or next Tuesday the same unless the user clearly intends a different week.',
+      'When the user gives a natural timing phrase, preserve that phrase in dueDateText instead of inventing a task id or pretending the task was created.',
+      'Ordinal calendar dates like April 30th, May 1st, June 2nd, and July 3rd are valid date phrases and should be preserved in dueDateText.',
+    ].join(' '),
     autonomous: Boolean(tool.autonomous),
     inputs: [
       {
-        key: 'action',
-        description: 'One of create_todo, update_todo_status, set_todo_due_date, or get_todo_details.',
+        key: 'operations',
+        description: [
+          'Required array of task operations.',
+          'Each operation must include action.',
+          'Valid actions: create_task, update_tasks, archive_tasks, query_tasks.',
+          'For create_task: provide title, and optionally details, dueDateText, or status.',
+          'For update_tasks and archive_tasks: provide selector plus changes.',
+          'For query_tasks: provide selector to search the current user\'s tasks.',
+          'Selector may include taskIds, title, searchText, status, dueDateText, includeArchived, or limit.',
+          'Changes may include title, details, status, dueDateText, or clearDueDate.',
+          'When creating a task, defaults are status ToDo, ownerType user, and createdBy the current user unless explicitly changed by the server policy.',
+          'Weekday-only dueDateText values like Monday, Tuesday, or Friday should mean the next upcoming occurrence of that weekday.',
+          'If the user gives timing language such as Wed at 4 pm, this coming Friday, in 2 months, tomorrow at 3 pm, or April 4th, include that timing phrase in dueDateText.',
+          'Ordinal month-day phrases like April 30th or October 1st should be passed through in dueDateText.',
+        ].join(' '),
         required: true,
-      },
-      {
-        key: 'title',
-        description: 'The todo title for creation.',
-        required: false,
-      },
-      {
-        key: 'details',
-        description: 'Optional extra task details.',
-        required: false,
-      },
-      {
-        key: 'dueDateText',
-        description: 'Optional natural language due date and time. If only a date is provided, default to 5:00 PM America/New_York.',
-        required: false,
-      },
-      {
-        key: 'todoId',
-        description: 'Todo id for updates.',
-        required: false,
-      },
-      {
-        key: 'todoTitle',
-        description: 'Todo title for status updates when id is not provided.',
-        required: false,
-      },
-      {
-        key: 'status',
-        description: 'New status: ToDo, Working, Blocked, Done, or Archived.',
-        required: false,
-      },
-      {
-        key: 'detailType',
-        description: 'Optional lookup target such as due_date, status, details, or summary.',
-        required: false,
       },
     ],
   };
+}
+
+function shouldDirectHandle() {
+  return false;
+}
+
+function shouldAutoExecute({ input = {} }) {
+  return normalizeOperations(input).length > 0;
 }
 
 function normalizeText(value) {
@@ -94,8 +126,8 @@ function normalizeStatus(value) {
     todo: 'ToDo',
     'to do': 'ToDo',
     working: 'Working',
-    inprogress: 'Working',
     'in progress': 'Working',
+    inprogress: 'Working',
     blocked: 'Blocked',
     done: 'Done',
     complete: 'Done',
@@ -109,46 +141,16 @@ function normalizeStatus(value) {
   return mapping[normalized] || '';
 }
 
-function isLikelyTodoIntent(value) {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (!normalized) {
-    return false;
+function toArray(value) {
+  if (Array.isArray(value)) {
+    return value;
   }
 
-  return [
-    /\b(add|create|make|set up)\b.*\b(task|todo|reminder)\b/,
-    /\bremind me to\b/,
-    /\b(set|mark|change|update)\b.*\b(task|todo)\b/,
-    /\b(delete|archive)\b.*\b(task|todo)\b/,
-    /\b(due date|deadline)\b/,
-    /\bwhen is\b.*\b(task|todo)\b/,
-    /\bwhat is\b.*\b(task|todo)\b/,
-    /\btell me about\b.*\b(task|todo)\b/,
-    /\bhow many\b.*\b(tasks|todos)\b/,
-    /\blist all\b.*\b(tasks|todos|them)\b/,
-  ].some((pattern) => pattern.test(normalized));
-}
+  if (value === null || value === undefined || value === '') {
+    return [];
+  }
 
-function looksLikeTodoQuery(value) {
-  const normalized = String(value || '').trim().toLowerCase();
-  return [
-    /\bwhen is\b.*\b(task|todo)\b/,
-    /\bwhen\b.*\bdue\b/,
-    /\bwhat is\b.*\b(task|todo)\b/,
-    /\bwhat's\b.*\b(task|todo)\b/,
-    /\btell me about\b.*\b(task|todo)\b/,
-    /\bshow me\b.*\b(task|todo)\b/,
-    /\bstatus of\b.*\b(task|todo)\b/,
-    /\bdetails for\b.*\b(task|todo)\b/,
-  ].some((pattern) => pattern.test(normalized));
-}
-
-function shouldAutoExecute({ latestUserMessage, input = {}, context = {} }) {
-  return Boolean(determineAction({
-    latestUserMessage,
-    input,
-    context,
-  }));
+  return [value];
 }
 
 function getNowInTimeZone(timeZone) {
@@ -174,6 +176,28 @@ function pad(value) {
   return String(value).padStart(2, '0');
 }
 
+function addUtcMonths(date, months) {
+  const copy = new Date(date.getTime());
+  const day = copy.getUTCDate();
+  copy.setUTCDate(1);
+  copy.setUTCMonth(copy.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(copy.getUTCFullYear(), copy.getUTCMonth() + 1, 0)).getUTCDate();
+  copy.setUTCDate(Math.min(day, lastDay));
+  return copy;
+}
+
+function addUtcYears(date, years) {
+  const copy = new Date(date.getTime());
+  const month = copy.getUTCMonth();
+  const day = copy.getUTCDate();
+  copy.setUTCDate(1);
+  copy.setUTCFullYear(copy.getUTCFullYear() + years);
+  const lastDay = new Date(Date.UTC(copy.getUTCFullYear(), month + 1, 0)).getUTCDate();
+  copy.setUTCMonth(month);
+  copy.setUTCDate(Math.min(day, lastDay));
+  return copy;
+}
+
 function buildLocalDateTime(year, month, day, hour = 17, minute = 0) {
   return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
 }
@@ -182,7 +206,7 @@ function parseTimeFromText(value) {
   const text = String(value || '').trim();
   const match = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
   if (!match) {
-    return { hour: 17, minute: 0, explicit: false };
+    return { hour: 17, minute: 0 };
   }
 
   let hour = Number(match[1]);
@@ -196,13 +220,28 @@ function parseTimeFromText(value) {
     hour = 0;
   }
 
-  return { hour, minute, explicit: true };
+  return { hour, minute };
+}
+
+function normalizeRelativeDatePhrase(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized
+    .replace(/\bthis coming\b/g, 'next')
+    .replace(/\bcoming\b/g, 'next')
+    .replace(/\bthis\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat)\b/g, '$1')
+    .replace(/\b(sun|mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat)\b/g, (match) => WEEKDAY_ALIASES[match] || match)
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function resolveRelativeDateToken(token, timeZone) {
   const now = getNowInTimeZone(timeZone);
   const today = new Date(Date.UTC(now.year, now.month - 1, now.day));
-  const normalized = String(token || '').trim().toLowerCase();
+  const normalized = normalizeRelativeDatePhrase(token);
 
   if (normalized === 'today') {
     return { year: now.year, month: now.month, day: now.day };
@@ -215,6 +254,121 @@ function resolveRelativeDateToken(token, timeZone) {
       month: today.getUTCMonth() + 1,
       day: today.getUTCDate(),
     };
+  }
+
+  if (normalized === 'next week') {
+    today.setUTCDate(today.getUTCDate() + 7);
+    return {
+      year: today.getUTCFullYear(),
+      month: today.getUTCMonth() + 1,
+      day: today.getUTCDate(),
+    };
+  }
+
+  if (normalized === 'next month') {
+    const shifted = addUtcMonths(today, 1);
+    return {
+      year: shifted.getUTCFullYear(),
+      month: shifted.getUTCMonth() + 1,
+      day: shifted.getUTCDate(),
+    };
+  }
+
+  if (normalized === 'next year') {
+    const shifted = addUtcYears(today, 1);
+    return {
+      year: shifted.getUTCFullYear(),
+      month: shifted.getUTCMonth() + 1,
+      day: shifted.getUTCDate(),
+    };
+  }
+
+  if (normalized === 'this weekend') {
+    const saturday = WEEKDAY_INDEX.saturday;
+    const current = WEEKDAY_INDEX[now.weekday];
+    let delta = (saturday - current + 7) % 7;
+    today.setUTCDate(today.getUTCDate() + delta);
+    return {
+      year: today.getUTCFullYear(),
+      month: today.getUTCMonth() + 1,
+      day: today.getUTCDate(),
+    };
+  }
+
+  const relativeOffsetMatch = normalized.match(/^in\s+(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(day|days|week|weeks|month|months|year|years)$/);
+  if (relativeOffsetMatch) {
+    const rawAmount = relativeOffsetMatch[1];
+    const amount = Number.isFinite(Number(rawAmount)) ? Number(rawAmount) : WORD_TO_NUMBER[rawAmount];
+    const unit = relativeOffsetMatch[2];
+
+    if (amount > 0) {
+      if (unit.startsWith('week')) {
+        today.setUTCDate(today.getUTCDate() + amount * 7);
+      } else if (unit.startsWith('day')) {
+        today.setUTCDate(today.getUTCDate() + amount);
+      } else if (unit.startsWith('month')) {
+        const shifted = addUtcMonths(today, amount);
+        return {
+          year: shifted.getUTCFullYear(),
+          month: shifted.getUTCMonth() + 1,
+          day: shifted.getUTCDate(),
+        };
+      } else if (unit.startsWith('year')) {
+        const shifted = addUtcYears(today, amount);
+        return {
+          year: shifted.getUTCFullYear(),
+          month: shifted.getUTCMonth() + 1,
+          day: shifted.getUTCDate(),
+        };
+      }
+      return {
+        year: today.getUTCFullYear(),
+        month: today.getUTCMonth() + 1,
+        day: today.getUTCDate(),
+      };
+    }
+  }
+
+  const fromNowMatch = normalized.match(/^(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(day|days|week|weeks|month|months|year|years)\s+from\s+now$/);
+  if (fromNowMatch) {
+    const rawAmount = fromNowMatch[1];
+    const amount = Number.isFinite(Number(rawAmount)) ? Number(rawAmount) : WORD_TO_NUMBER[rawAmount];
+    const unit = fromNowMatch[2];
+
+    if (amount > 0) {
+      if (unit.startsWith('week')) {
+        today.setUTCDate(today.getUTCDate() + amount * 7);
+        return {
+          year: today.getUTCFullYear(),
+          month: today.getUTCMonth() + 1,
+          day: today.getUTCDate(),
+        };
+      }
+      if (unit.startsWith('day')) {
+        today.setUTCDate(today.getUTCDate() + amount);
+        return {
+          year: today.getUTCFullYear(),
+          month: today.getUTCMonth() + 1,
+          day: today.getUTCDate(),
+        };
+      }
+      if (unit.startsWith('month')) {
+        const shifted = addUtcMonths(today, amount);
+        return {
+          year: shifted.getUTCFullYear(),
+          month: shifted.getUTCMonth() + 1,
+          day: shifted.getUTCDate(),
+        };
+      }
+      if (unit.startsWith('year')) {
+        const shifted = addUtcYears(today, amount);
+        return {
+          year: shifted.getUTCFullYear(),
+          month: shifted.getUTCMonth() + 1,
+          day: shifted.getUTCDate(),
+        };
+      }
+    }
   }
 
   const nextWeekdayMatch = normalized.match(/^next\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/);
@@ -231,11 +385,25 @@ function resolveRelativeDateToken(token, timeZone) {
     };
   }
 
+  const weekdayMatch = normalized.match(/^(sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/);
+  if (weekdayMatch) {
+    const target = WEEKDAY_INDEX[weekdayMatch[1]];
+    const current = WEEKDAY_INDEX[now.weekday];
+    let delta = (target - current + 7) % 7;
+    delta = delta === 0 ? 7 : delta;
+    today.setUTCDate(today.getUTCDate() + delta);
+    return {
+      year: today.getUTCFullYear(),
+      month: today.getUTCMonth() + 1,
+      day: today.getUTCDate(),
+    };
+  }
+
   return null;
 }
 
 function parseMonthDateToken(token, timeZone) {
-  const normalized = normalizeText(token).toLowerCase();
+  const normalized = normalizeRelativeDatePhrase(token);
   const match = normalized.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?\b/);
   if (!match) {
     return null;
@@ -247,6 +415,11 @@ function parseMonthDateToken(token, timeZone) {
   const explicitYear = match[3] ? Number(match[3]) : null;
   let year = explicitYear || now.year;
 
+  const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > lastDayOfMonth) {
+    return null;
+  }
+
   if (!explicitYear) {
     const candidate = new Date(Date.UTC(year, month - 1, day));
     const current = new Date(Date.UTC(now.year, now.month - 1, now.day));
@@ -256,74 +429,6 @@ function parseMonthDateToken(token, timeZone) {
   }
 
   return { year, month, day };
-}
-
-function extractDueDateText(text) {
-  const value = String(text || '');
-  const patterns = [
-    /\b(?:by|due)\s+((?:tomorrow|today|next\s+\w+|[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?)\s+by\s+\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i,
-    /\bby\s+((?:\d{1,2}(?::\d{2})?\s*(?:am|pm)\s+(?:on\s+)?(?:tomorrow|today|next\s+\w+|[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?)))\b/i,
-    /\bdue\s+((?:\d{1,2}(?::\d{2})?\s*(?:am|pm)\s+(?:on\s+)?(?:tomorrow|today|next\s+\w+|[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?)))\b/i,
-    /\bby\s+((?:\d{1,2}(?::\d{2})?\s*(?:am|pm))|(?:tomorrow|today|next\s+\w+)|(?:[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?)(?:\s+at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm))?)/i,
-    /\bdue\s+((?:\d{1,2}(?::\d{2})?\s*(?:am|pm))|(?:tomorrow|today|next\s+\w+)|(?:[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?)(?:\s+at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm))?)/i,
-    /\bon\s+((?:tomorrow|today|next\s+\w+)|(?:[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?))(?:\s+at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)))?/i,
-    /\b((?:tomorrow|today|next\s+\w+|[A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?))(?:\s+at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)))\b/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = value.match(pattern);
-    if (match) {
-      const dueDateText = normalizeText([match[1], match[2]].filter(Boolean).join(' '));
-      return {
-        dueDateText,
-        remainingText: normalizeText(value.replace(match[0], ' ')),
-      };
-    }
-  }
-
-  return {
-    dueDateText: '',
-    remainingText: normalizeText(value),
-  };
-}
-
-function parseNaturalDueDate(dueDateText, tenantTimeZoneLabel) {
-  const normalized = normalizeText(dueDateText);
-  if (!normalized) {
-    return { iso: null, display: '', ambiguous: false };
-  }
-
-  const normalizedWithoutTime = normalizeText(
-    normalized
-      .replace(/\bby\s+\d{1,2}(?::\d{2})?\s*(am|pm)\b/i, '')
-      .replace(/\bat\s+\d{1,2}(?::\d{2})?\s*(am|pm)\b/i, '')
-      .replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/i, '')
-      .replace(/\bon\s+/i, '')
-  );
-  const timeZone = resolveTenantTimeZone(tenantTimeZoneLabel);
-  const relativeDate = resolveRelativeDateToken(normalizedWithoutTime, timeZone);
-  const monthDate = parseMonthDateToken(normalizedWithoutTime, timeZone);
-  const { hour, minute } = parseTimeFromText(normalized);
-
-  let dateParts = relativeDate || monthDate;
-  if (!dateParts) {
-    if (/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/i.test(normalized)) {
-      return { iso: null, display: '', ambiguous: true };
-    }
-    return { iso: null, display: '', ambiguous: false };
-  }
-
-  const localDateTime = buildLocalDateTime(dateParts.year, dateParts.month, dateParts.day, hour, minute);
-  const iso = parseDateTimeLocalInTenantTimeZone(localDateTime, tenantTimeZoneLabel);
-  if (!iso) {
-    return { iso: null, display: '', ambiguous: true };
-  }
-
-  return {
-    iso,
-    display: formatDueDateForResponse(iso),
-    ambiguous: false,
-  };
 }
 
 function formatDueDateForResponse(value) {
@@ -347,323 +452,185 @@ function formatDueDateForResponse(value) {
   }).format(date);
 }
 
-function stripCreatePrefixes(text) {
-  return normalizeText(
-    String(text || '')
-      .replace(/^\b(add|create|make|set up)\b\s+(?:a\s+)?(?:task|todo|reminder)\b(?:\s+for me)?/i, '')
-      .replace(/^\bnew\b/i, '')
-      .replace(/^\bcalled\b/i, '')
-      .replace(/^\bremind me to\b/i, '')
-      .replace(/^\bto\b/i, '')
-      .replace(/^\bfor me to\b/i, '')
-      .replace(/^\bit(?:'s| is)\b/i, '')
+function formatDueDateDay(value, tenantTimeZoneLabel) {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: resolveTenantTimeZone(tenantTimeZoneLabel),
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function parseNaturalDueDate(dueDateText, tenantTimeZoneLabel) {
+  const normalized = normalizeText(dueDateText);
+  if (!normalized) {
+    return { iso: null, display: '', ambiguous: false };
+  }
+
+  const normalizedWithoutTime = normalizeText(
+    normalized
+      .replace(/\bby\s+/gi, '')
+      .replace(/\bat\s+/gi, '')
+      .replace(/\bon\s+/gi, '')
   );
-}
+  const timeZone = resolveTenantTimeZone(tenantTimeZoneLabel);
+  const relativeDate = resolveRelativeDateToken(normalizedWithoutTime.replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/i, '').trim(), timeZone);
+  const monthDate = parseMonthDateToken(normalizedWithoutTime.replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/i, '').trim(), timeZone);
+  const { hour, minute } = parseTimeFromText(normalized);
+  const dateParts = relativeDate || monthDate;
 
-function parseCreateAction({ latestUserMessage, input = {} }) {
-  const explicitTitle = normalizeText(input.title);
-  const explicitDetails = normalizeText(input.details);
-  const explicitDueDateText = normalizeText(input.dueDateText);
-
-  if (explicitTitle) {
-    return {
-      title: explicitTitle,
-      details: explicitDetails,
-      dueDateText: explicitDueDateText,
-    };
+  if (!dateParts) {
+    return { iso: null, display: '', ambiguous: true };
   }
 
-  const extracted = extractDueDateText(latestUserMessage);
-  const title = stripCreatePrefixes(extracted.remainingText);
-
-  return {
-    title,
-    details: explicitDetails,
-    dueDateText: explicitDueDateText || extracted.dueDateText,
-  };
-}
-
-function parseStatusAction({ latestUserMessage, input = {} }) {
-  const explicitStatus = normalizeStatus(input.status);
-  const explicitTodoId = normalizeText(input.todoId);
-  const explicitTodoTitle = normalizeText(input.todoTitle);
-
-  if (explicitStatus && (explicitTodoId || explicitTodoTitle)) {
-    return {
-      status: explicitStatus,
-      todoId: explicitTodoId,
-      todoTitle: explicitTodoTitle,
-    };
-  }
-
-  const text = String(latestUserMessage || '');
-  const todoIdMatch = text.match(/\b(?:task|todo)\s+id\s+([A-Za-z0-9_-]+)\b/i) || text.match(/\b(?:task|todo)\s+([A-Za-z0-9_-]{6,})\b/i);
-  const quotedTitleMatch = text.match(/["“](.+?)["”]/);
-  const statusMatch = text.match(/\b(todo|working|blocked|done|archived|archive|delete|deleted|complete|completed)\b/i);
-
-  return {
-    status: normalizeStatus(statusMatch?.[1] || ''),
-    todoId: explicitTodoId || normalizeText(todoIdMatch?.[1] || ''),
-    todoTitle: explicitTodoTitle || normalizeText(quotedTitleMatch?.[1] || ''),
-  };
-}
-
-function parseDueDateFollowup({ latestUserMessage, input = {} }) {
-  const dueDateText = normalizeText(input.dueDateText || latestUserMessage);
-  return {
-    dueDateText,
-    todoId: normalizeText(input.todoId),
-  };
-}
-
-function parseTaskReference(text, explicitTodoTitle = '', explicitTodoId = '') {
-  if (explicitTodoId || explicitTodoTitle) {
-    return {
-      todoId: normalizeText(explicitTodoId),
-      todoTitle: normalizeText(explicitTodoTitle),
-    };
-  }
-
-  const value = String(text || '').trim();
-  const todoIdMatch = value.match(/\b(?:task|todo)\s+id\s+([A-Za-z0-9_-]+)\b/i) || value.match(/\b(?:task|todo)\s+([A-Za-z0-9_-]{6,})\b/i);
-  if (todoIdMatch?.[1]) {
-    return {
-      todoId: normalizeText(todoIdMatch[1]),
-      todoTitle: '',
-    };
-  }
-
-  const quotedTitleMatch = value.match(/["“](.+?)["”]/);
-  if (quotedTitleMatch?.[1]) {
-    return {
-      todoId: '',
-      todoTitle: normalizeText(quotedTitleMatch[1]),
-    };
-  }
-
-  const dueTitleMatch = value.match(/\b(?:task|todo)\s+(.+?)\s+due\??$/i);
-  if (dueTitleMatch?.[1]) {
-    return {
-      todoId: '',
-      todoTitle: normalizeText(dueTitleMatch[1]),
-    };
-  }
-
-  const aboutTitleMatch = value.match(/\b(?:task|todo)\s+(.+?)\??$/i);
-  if (aboutTitleMatch?.[1] && /\b(when|what|tell me|show me|status|details)\b/i.test(value)) {
-    return {
-      todoId: '',
-      todoTitle: normalizeText(aboutTitleMatch[1]),
-    };
+  const localDateTime = buildLocalDateTime(dateParts.year, dateParts.month, dateParts.day, hour, minute);
+  const iso = parseDateTimeLocalInTenantTimeZone(localDateTime, tenantTimeZoneLabel);
+  if (!iso) {
+    return { iso: null, display: '', ambiguous: true };
   }
 
   return {
-    todoId: '',
-    todoTitle: '',
+    iso,
+    display: formatDueDateForResponse(iso),
+    ambiguous: false,
   };
 }
 
-function parseLookupAction({ latestUserMessage, input = {} }) {
-  const detailType = normalizeText(input.detailType).toLowerCase();
-  const reference = parseTaskReference(latestUserMessage, input.todoTitle, input.todoId);
-  const text = String(latestUserMessage || '').toLowerCase();
-  const inputStatus = normalizeStatus(input.status || '');
-  const inputDueDateText = normalizeText(input.dueDateText || '');
-
-  if (detailType) {
-    return {
-      ...reference,
-      detailType,
-      status: inputStatus,
-      dueDateText: inputDueDateText,
-    };
-  }
-
-  if (/\bdue\b|\bdeadline\b/.test(text)) {
-    return {
-      ...reference,
-      detailType: 'due_date',
-    };
-  }
-
-  if (/\bstatus\b/.test(text)) {
-    return {
-      ...reference,
-      detailType: 'status',
-    };
-  }
-
-  if (/\bdetails?\b/.test(text)) {
-    return {
-      ...reference,
-      detailType: 'details',
-    };
-  }
-
+function normalizeSelector(selector = {}, operation = {}) {
   return {
-    ...reference,
-    detailType: 'summary',
-    status: inputStatus,
-    dueDateText: inputDueDateText,
+    taskIds: toArray(selector.taskIds || operation.taskIds || operation.todoIds || operation.todoId)
+      .map((item) => normalizeText(item))
+      .filter(Boolean),
+    title: normalizeText(selector.title || operation.titleQuery || operation.todoTitle || ''),
+    searchText: normalizeText(selector.searchText || operation.searchText || ''),
+    status: normalizeStatus(selector.status || ''),
+    dueDateText: normalizeText(selector.dueDateText || ''),
+    includeArchived: Boolean(selector.includeArchived || operation.includeArchived),
+    limit: Number.isFinite(Number(selector.limit || operation.limit)) ? Number(selector.limit || operation.limit) : 0,
   };
 }
 
-function extractRequestedStatus(text) {
-  const normalized = String(text || '').toLowerCase();
-  if (/\barchived?\b/.test(normalized) || /\bdeleted?\b/.test(normalized)) {
-    return 'Archived';
+function normalizeOperations(input = {}) {
+  if (Array.isArray(input.operations)) {
+    return input.operations.filter((operation) => operation && typeof operation === 'object');
   }
-  if (/\bblocked\b/.test(normalized)) {
-    return 'Blocked';
+
+  if (input && typeof input === 'object' && input.action) {
+    return [input];
   }
-  if (/\bworking\b/.test(normalized) || /\bin progress\b/.test(normalized)) {
-    return 'Working';
-  }
-  if (/\bdone\b/.test(normalized) || /\bcompleted?\b/.test(normalized)) {
-    return 'Done';
-  }
-  if (/\btodo\b|\bto do\b/.test(normalized)) {
-    return 'ToDo';
-  }
-  return '';
+
+  return [];
 }
 
-function looksLikeTodoListQuery(text) {
-  const normalized = String(text || '').toLowerCase();
-  return [
-    /\bwhat\b.*\b(tasks|todos)\b/,
-    /\bwhich\b.*\b(tasks|todos)\b/,
-    /\bdo i have any\b.*\b(tasks|todos)\b/,
-    /\bdo (?:i )?have any\b.*\b(tasks|todos)\b/,
-    /\bdo (?:i )?have\b.*\b(tasks|todos)\b/,
-    /\bdo i have any\b.*\bdue\b/,
-    /\bdo (?:i )?have any\b.*\bdue\b/,
-    /\bdo (?:i )?have\b.*\bdue\b/,
-    /\bwhat\b.*\b(tasks|todos)\b.*\bdue\b/,
-    /\bwhich\b.*\b(tasks|todos)\b.*\bdue\b/,
-    /\bhow many\b.*\b(tasks|todos)\b/,
-    /\bshow me\b.*\b(tasks|todos)\b/,
-    /\blist\b.*\b(tasks|todos)\b/,
-    /\blist all of them\b/,
-    /\bshow all of them\b/,
-    /\bany\b.*\barchived tasks\b/,
-    /\bany\b.*\bblocked tasks\b/,
-    /\bany\b.*\bdone tasks\b/,
-    /\bany\b.*\bworking tasks\b/,
-    /\bany\b.*\btasks due\b/,
-    /\bany\b.*\bdue today\b/,
-    /\bany\b.*\bdue tomorrow\b/,
-    /\b(tasks|todos)\b.*\bare archived\b/,
-    /\b(tasks|todos)\b.*\bare done\b/,
-    /\b(tasks|todos)\b.*\bare blocked\b/,
-    /\b(tasks|todos)\b.*\bare working\b/,
-  ].some((pattern) => pattern.test(normalized));
+function normalizeAction(value) {
+  return normalizeText(value).toLowerCase();
 }
 
-function isCountQuery(text) {
-  return /\bhow many\b/i.test(String(text || ''));
+async function loadCurrentUserTasks(context) {
+  return listTodosForTenant({
+    authToken: context.authToken,
+    tenantId: context.tenantId,
+    currentUserId: context.currentUserId,
+    tenantUsers: [],
+    tenantTimeZone: context.tenantTimeZone,
+    status: 'All',
+  });
 }
 
-function isListAllFollowup(text, pendingTodoQuery) {
-  if (!pendingTodoQuery) {
-    return false;
+function applySelector(tasks, selector, tenantTimeZoneLabel) {
+  let matches = [...tasks];
+
+  if (!selector.includeArchived) {
+    matches = matches.filter((task) => task.status !== 'Archived');
   }
 
-  return /\b(list|show)\s+all\b|\ball of them\b/i.test(String(text || ''));
+  if (selector.taskIds.length) {
+    const ids = new Set(selector.taskIds);
+    matches = matches.filter((task) => ids.has(task.id));
+  }
+
+  if (selector.title) {
+    const title = selector.title.toLowerCase();
+    matches = matches.filter((task) => String(task.title || '').toLowerCase().includes(title));
+  }
+
+  if (selector.searchText) {
+    const search = selector.searchText.toLowerCase();
+    matches = matches.filter((task) => {
+      const haystack = [
+        task.id,
+        task.title,
+        task.details,
+        task.status,
+        task.rawDueDate ? formatDueDateForResponse(task.rawDueDate) : '',
+      ].join(' ').toLowerCase();
+      return haystack.includes(search);
+    });
+  }
+
+  if (selector.status) {
+    matches = matches.filter((task) => task.status === selector.status);
+  }
+
+  if (selector.dueDateText) {
+    const dueDate = parseNaturalDueDate(selector.dueDateText, tenantTimeZoneLabel);
+    if (dueDate.ambiguous || !dueDate.iso) {
+      const error = new Error(`Could not understand dueDateText "${selector.dueDateText}".`);
+      error.code = 'INVALID_DUE_DATE';
+      throw error;
+    }
+
+    const targetDay = formatDueDateDay(dueDate.iso, tenantTimeZoneLabel);
+    matches = matches.filter((task) => task.rawDueDate && formatDueDateDay(task.rawDueDate, tenantTimeZoneLabel) === targetDay);
+  }
+
+  if (selector.limit > 0) {
+    matches = matches.slice(0, selector.limit);
+  }
+
+  return matches;
 }
 
-function buildSearchKeywords(text) {
-  return String(text || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((word) => word.length > 2)
-    .filter((word) => ![
-      'any',
-      'all',
-      'many',
-      'have',
-      'list',
-      'show',
-      'task',
-      'tasks',
-      'todo',
-      'todos',
-      'due',
-      'about',
-      'tell',
-      'what',
-      'when',
-      'with',
-      'your',
-      'mine',
-      'supposed',
-      'check',
-      'marked',
-      'that',
-      'today',
-      'are',
-      'did',
-      'there',
-      'them',
-      'this',
-      'these',
-      'those',
-    ].includes(word));
+function buildTaskLine(task) {
+  const dueText = task.rawDueDate ? `, due ${formatDueDateForResponse(task.rawDueDate)}` : '';
+  return `- ${task.id}: ${task.title} (${task.status}${dueText})`;
 }
 
-function determineAction({ latestUserMessage, input = {}, context = {} }) {
-  const explicitAction = normalizeText(input.action).toLowerCase();
-  if (context?.pendingTodoFollowup) {
-    return 'set_todo_due_date';
-  }
-
-  if (looksLikeTodoQuery(latestUserMessage) || looksLikeTodoListQuery(latestUserMessage) || isListAllFollowup(latestUserMessage, context?.pendingTodoQuery)) {
-    return 'get_todo_details';
-  }
-
-  if (explicitAction) {
-    return explicitAction;
-  }
-
-  const normalized = String(latestUserMessage || '').trim().toLowerCase();
-  if (/\b(add|create|make|set up)\b/.test(normalized) && /\b(task|todo|reminder)\b/.test(normalized)) {
-    return 'create_todo';
-  }
-
-  if (/\bremind me to\b/.test(normalized)) {
-    return 'create_todo';
-  }
-
-  if (/\b(set|mark|change|update|delete|archive)\b/.test(normalized) && /\b(task|todo)\b/.test(normalized)) {
-    return 'update_todo_status';
-  }
-
-  return '';
-}
-
-function shouldDirectHandle({ latestUserMessage, context = {} }) {
-  return Boolean(determineAction({
-    latestUserMessage,
-    input: {},
-    context,
-  }));
-}
-
-async function createTodoAction({ latestUserMessage, input, context }) {
-  const parsed = parseCreateAction({ latestUserMessage, input });
-  if (!parsed.title) {
+async function executeCreateOperation(operation, context) {
+  const title = normalizeText(operation.title);
+  if (!title) {
     return {
-      message: 'What would you like the task title to be?',
-      sessionStatePatch: context.pendingTodoFollowup || null,
+      ok: false,
+      action: 'create_task',
+      message: 'create_task requires a title.',
     };
   }
 
-  const dueDate = parseNaturalDueDate(parsed.dueDateText, context.tenantTimeZone);
-  if (parsed.dueDateText && dueDate.ambiguous) {
+  const status = normalizeStatus(operation.status) || 'ToDo';
+  if (!VALID_STATUSES.includes(status)) {
     return {
-      message: `I can create that task, but I need a date for "${parsed.dueDateText}". What due date should I use?`,
-      sessionStatePatch: context.pendingTodoFollowup || null,
+      ok: false,
+      action: 'create_task',
+      message: `Invalid status "${operation.status}".`,
+    };
+  }
+
+  const dueDateText = normalizeText(operation.dueDateText);
+  const dueDate = dueDateText ? parseNaturalDueDate(dueDateText, context.tenantTimeZone) : { iso: null, display: '', ambiguous: false };
+  if (dueDateText && (dueDate.ambiguous || !dueDate.iso)) {
+    return {
+      ok: false,
+      action: 'create_task',
+      message: `Could not understand dueDateText "${dueDateText}".`,
     };
   }
 
@@ -671,10 +638,10 @@ async function createTodoAction({ latestUserMessage, input, context }) {
     authToken: context.authToken,
     payload: {
       tenant: context.tenantId,
-      title: parsed.title,
-      status: 'ToDo',
+      title,
+      status,
       dueDate: dueDate.iso || null,
-      details: parsed.details || '',
+      details: normalizeText(operation.details),
       ownerType: 'user',
       ownerUser: context.currentUserId,
       ownerLabel: '',
@@ -683,412 +650,227 @@ async function createTodoAction({ latestUserMessage, input, context }) {
     },
   });
 
-  if (dueDate.iso) {
-    return {
-      message: `Task ${record.id} created with a due date of ${dueDate.display}.`,
-      sessionStatePatch: null,
-    };
-  }
-
-  return {
-    message: `Task ${record.id} created with no due date, would you like to set a due date?`,
-    sessionStatePatch: {
-      todoId: record.id,
-      title: parsed.title,
-      action: 'awaiting_due_date',
-    },
-  };
-}
-
-async function resolveTodoForStatusUpdate({ parsed, context }) {
-  if (parsed.todoId) {
-    const todo = await getOwnedTodoById({
-      authToken: context.authToken,
-      todoId: parsed.todoId,
-      tenantId: context.tenantId,
-      currentUserId: context.currentUserId,
-      tenantTimeZone: context.tenantTimeZone,
-    });
-
-    if (!todo) {
-      return {
-        error: "That ID doesn't match your current todos, please provide the ID.",
-      };
-    }
-
-    return { todo };
-  }
-
-  if (!parsed.todoTitle) {
-    return {
-      error: 'Please provide the task ID or exact task title you want to update.',
-    };
-  }
-
-  const matches = await findTodosForUserByTitle({
+  const verifiedTask = await getOwnedTodoById({
     authToken: context.authToken,
-    tenantId: context.tenantId,
-    currentUserId: context.currentUserId,
-    title: parsed.todoTitle,
-    tenantTimeZone: context.tenantTimeZone,
-  });
-
-  if (!matches.length) {
-    return {
-      error: `I couldn't find a current task titled "${parsed.todoTitle}". Please provide the task ID.`,
-    };
-  }
-
-  if (matches.length > 1) {
-    const options = matches
-      .slice(0, 5)
-      .map((todo) => `- ${todo.id}: ${todo.title} (${todo.status})`)
-      .join('\n');
-    return {
-      error: `I found multiple matching tasks. Please provide the task ID.\n${options}`,
-    };
-  }
-
-  return { todo: matches[0] };
-}
-
-async function resolveTodoForLookup({ parsed, context }) {
-  if (!parsed.todoId && !parsed.todoTitle) {
-    const todos = await listTodosForTenant({
-      authToken: context.authToken,
-      tenantId: context.tenantId,
-      currentUserId: context.currentUserId,
-      tenantUsers: [],
-      tenantTimeZone: context.tenantTimeZone,
-      status: 'All',
-    });
-    const keywords = buildSearchKeywords(parsed.searchText || '');
-
-    if (keywords.length) {
-      const rankedMatches = todos
-        .map((todo) => {
-          const haystack = `${String(todo.title || '')} ${String(todo.details || '')}`.toLowerCase();
-          const score = keywords.reduce((total, word) => total + (haystack.includes(word) ? 1 : 0), 0);
-          return { todo, score };
-        })
-        .filter((item) => item.score > 0)
-        .sort((a, b) => b.score - a.score);
-
-      if (rankedMatches.length === 1 || (rankedMatches[0] && rankedMatches[0].score > (rankedMatches[1]?.score || 0))) {
-        return { todo: rankedMatches[0].todo };
-      }
-
-      if (rankedMatches.length > 1) {
-        const options = rankedMatches
-          .slice(0, 5)
-          .map((item) => `- ${item.todo.id}: ${item.todo.title} (${item.todo.status})`)
-          .join('\n');
-        return {
-          error: `I found multiple matching tasks. Please provide the task ID.\n${options}`,
-        };
-      }
-    }
-  }
-
-  return resolveTodoForStatusUpdate({
-    parsed: {
-      todoId: parsed.todoId,
-      todoTitle: parsed.todoTitle,
-    },
-    context,
-  });
-}
-
-async function listTodosForLookup({ parsed, context }) {
-  const searchText = parsed.searchText || '';
-  const requestedStatus = normalizeStatus(parsed.status || '') || extractRequestedStatus(searchText) || 'ToDo';
-  const tenantTimeZone = resolveTenantTimeZone(context.tenantTimeZone);
-  const todos = await listTodosForTenant({
-    authToken: context.authToken,
-    tenantId: context.tenantId,
-    currentUserId: context.currentUserId,
-    tenantUsers: [],
-    tenantTimeZone: context.tenantTimeZone,
-    status: 'All',
-  });
-
-  let matches = todos;
-
-  if (requestedStatus) {
-    matches = matches.filter((todo) => todo.status === requestedStatus);
-  }
-
-  if (/\bdue\b/.test(String(searchText).toLowerCase()) || /\b(today|tomorrow|next\s+\w+)\b/i.test(parsed.dueDateText || '')) {
-    matches = matches.filter((todo) => todo.rawDueDate);
-  }
-
-  if (/\btoday\b|\btomorrow\b/.test(String(searchText).toLowerCase()) || /\btoday\b|\btomorrow\b/i.test(parsed.dueDateText || '')) {
-    const baseDate = new Date();
-    if (/\btomorrow\b/.test(String(searchText).toLowerCase()) || /\btomorrow\b/i.test(parsed.dueDateText || '')) {
-      baseDate.setDate(baseDate.getDate() + 1);
-    }
-
-    const targetDay = new Intl.DateTimeFormat('en-CA', {
-      timeZone: tenantTimeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(baseDate);
-
-    matches = matches.filter((todo) => {
-      if (!todo.rawDueDate) {
-        return false;
-      }
-
-      const dueDay = new Intl.DateTimeFormat('en-CA', {
-        timeZone: tenantTimeZone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(new Date(todo.rawDueDate));
-
-      return dueDay === targetDay;
-    });
-  }
-
-  const keywords = buildSearchKeywords(searchText);
-  if (keywords.length) {
-    matches = matches.filter((todo) => {
-      const haystack = `${String(todo.title || '')} ${String(todo.details || '')}`.toLowerCase();
-      return keywords.some((word) => haystack.includes(word));
-    });
-  }
-
-  return matches;
-}
-
-async function updateTodoStatusAction({ latestUserMessage, input, context }) {
-  const parsed = parseStatusAction({ latestUserMessage, input });
-  if (!parsed.status || !VALID_STATUSES.includes(parsed.status)) {
-    return {
-      message: 'Please tell me which status to use: ToDo, Working, Blocked, Done, or Archived.',
-      sessionStatePatch: context.pendingTodoFollowup || null,
-    };
-  }
-
-  const resolved = await resolveTodoForStatusUpdate({ parsed, context });
-  if (resolved.error) {
-    return {
-      message: resolved.error,
-      sessionStatePatch: context.pendingTodoFollowup || null,
-    };
-  }
-
-  await updateTodo({
-    authToken: context.authToken,
-    todoId: resolved.todo.id,
-    payload: {
-      status: parsed.status,
-    },
-  });
-
-  return {
-    message: `Task ${resolved.todo.id} updated to ${parsed.status}.`,
-    sessionStatePatch: null,
-  };
-}
-
-async function updateTodoDueDateAction({ latestUserMessage, input, context }) {
-  const parsed = parseDueDateFollowup({ latestUserMessage, input });
-  const pending = context.pendingTodoFollowup || null;
-  const todoId = parsed.todoId || pending?.todoId || '';
-
-  if (!todoId) {
-    return {
-      message: 'Please tell me which task ID to update and what due date to use.',
-      sessionStatePatch: pending,
-    };
-  }
-
-  const dueDate = parseNaturalDueDate(parsed.dueDateText, context.tenantTimeZone);
-  if (!parsed.dueDateText || dueDate.ambiguous || !dueDate.iso) {
-    return {
-      message: 'Please provide the due date and time you want to use.',
-      sessionStatePatch: pending || { todoId, action: 'awaiting_due_date' },
-    };
-  }
-
-  const todo = await getOwnedTodoById({
-    authToken: context.authToken,
-    todoId,
+    todoId: record.id,
     tenantId: context.tenantId,
     currentUserId: context.currentUserId,
     tenantTimeZone: context.tenantTimeZone,
   });
 
-  if (!todo) {
+  if (!verifiedTask) {
     return {
-      message: "That ID doesn't match your current todos, please provide the ID.",
-      sessionStatePatch: pending,
+      ok: false,
+      action: 'create_task',
+      message: `Task creation could not be verified for id ${record.id}.`,
     };
   }
 
-  await updateTodo({
-    authToken: context.authToken,
-    todoId,
-    payload: {
-      dueDate: dueDate.iso,
-    },
-  });
-
   return {
-    message: `Task ${todoId} due date set to ${dueDate.display}.`,
-    sessionStatePatch: null,
-  };
-}
-
-async function getTodoDetailsAction({ latestUserMessage, input, context }) {
-  const parsed = parseLookupAction({ latestUserMessage, input });
-  parsed.searchText = latestUserMessage;
-
-  if (isListAllFollowup(latestUserMessage, context.pendingTodoQuery)) {
-    parsed.searchText = context.pendingTodoQuery.searchText || '';
-    parsed.status = context.pendingTodoQuery.status || '';
-  }
-
-  const shouldList = looksLikeTodoListQuery(latestUserMessage)
-    || (!parsed.todoId && !parsed.todoTitle && (parsed.status || parsed.dueDateText));
-
-  if (shouldList) {
-    const matches = await listTodosForLookup({ parsed, context });
-    const requestedStatus = normalizeStatus(parsed.status || '') || extractRequestedStatus(parsed.searchText || latestUserMessage) || 'ToDo';
-
-    if (!matches.length) {
-      if (requestedStatus) {
-        return {
-          message: `You don't have any ${requestedStatus.toLowerCase()} tasks right now.`,
-          sessionStatePatch: {
-            pendingTodoFollowup: context.pendingTodoFollowup || null,
-            pendingTodoQuery: null,
-          },
-        };
-      }
-
-      return {
-        message: "I couldn't find any matching tasks right now.",
-        sessionStatePatch: {
-          pendingTodoFollowup: context.pendingTodoFollowup || null,
-          pendingTodoQuery: null,
-        },
-      };
-    }
-
-    if (isCountQuery(latestUserMessage)) {
-      const label = requestedStatus ? requestedStatus.toLowerCase() : 'matching';
-      return {
-        message: `You have ${matches.length} ${label} task${matches.length === 1 ? '' : 's'}. Would you like me to list all of them?`,
-        sessionStatePatch: {
-          pendingTodoFollowup: context.pendingTodoFollowup || null,
-          pendingTodoQuery: {
-            searchText: parsed.searchText || latestUserMessage,
-            status: requestedStatus || '',
-          },
-        },
-      };
-    }
-
-    const lines = matches
-      .slice(0, 5)
-      .map((todo) => {
-        const dueText = todo.rawDueDate ? `, due ${formatDueDateForResponse(todo.rawDueDate)}` : '';
-        return `- ${todo.id}: ${todo.title} (${todo.status}${dueText})`;
-      });
-
-    const intro = requestedStatus
-      ? `Here ${matches.length === 1 ? 'is' : 'are'} your ${requestedStatus.toLowerCase()} task${matches.length === 1 ? '' : 's'}:`
-      : `Here ${matches.length === 1 ? 'is' : 'are'} the matching task${matches.length === 1 ? '' : 's'} I found:`;
-
-    return {
-      message: [intro, ...lines].join('\n'),
-      sessionStatePatch: {
-        pendingTodoFollowup: context.pendingTodoFollowup || null,
-        pendingTodoQuery: {
-          searchText: parsed.searchText || latestUserMessage,
-          status: requestedStatus || '',
-        },
+    ok: true,
+    action: 'create_task',
+    created: [
+      {
+        id: verifiedTask.id,
+        title: verifiedTask.title,
+        status: verifiedTask.status,
+        dueDate: verifiedTask.rawDueDate || null,
       },
-    };
-  }
-
-  const resolved = await resolveTodoForLookup({ parsed, context });
-
-  if (resolved.error) {
-    return {
-      message: resolved.error.replace('update', 'look up'),
-      sessionStatePatch: context.pendingTodoFollowup || null,
-    };
-  }
-
-  const todo = resolved.todo;
-
-  if (parsed.detailType === 'due_date') {
-    if (todo.rawDueDate) {
-      return {
-        message: `Task ${todo.id} is due ${formatDueDateForResponse(todo.rawDueDate)}.`,
-        sessionStatePatch: context.pendingTodoFollowup || null,
-      };
-    }
-
-    return {
-      message: `Task ${todo.id} has no due date set.`,
-      sessionStatePatch: context.pendingTodoFollowup || null,
-    };
-  }
-
-  if (parsed.detailType === 'status') {
-    return {
-      message: `Task ${todo.id} is currently ${todo.status}.`,
-      sessionStatePatch: context.pendingTodoFollowup || null,
-    };
-  }
-
-  if (parsed.detailType === 'details') {
-    return {
-      message: todo.details
-        ? `Task ${todo.id} details: ${todo.details}`
-        : `Task ${todo.id} has no additional details.`,
-      sessionStatePatch: context.pendingTodoFollowup || null,
-    };
-  }
-
-  return {
-    message: [
-      `Task ${todo.id}: ${todo.title}`,
-      `Status: ${todo.status}`,
-      todo.rawDueDate ? `Due: ${formatDueDateForResponse(todo.rawDueDate)}` : 'Due: No due date set',
-      todo.details ? `Details: ${todo.details}` : '',
-    ].filter(Boolean).join('\n'),
-    sessionStatePatch: context.pendingTodoFollowup || null,
+    ],
+    message: verifiedTask.rawDueDate
+      ? `Created task ${verifiedTask.id}: ${verifiedTask.title} (${verifiedTask.status}, due ${formatDueDateForResponse(verifiedTask.rawDueDate)}).`
+      : `Created task ${verifiedTask.id}: ${verifiedTask.title} (${verifiedTask.status}).`,
   };
 }
 
-async function execute({ input = {}, context = {}, latestUserMessage = '' }) {
-  const action = determineAction({ latestUserMessage, input, context });
+function normalizeChanges(changes = {}, operation = {}) {
+  const normalized = {};
 
-  if (action === 'create_todo') {
-    return createTodoAction({ latestUserMessage, input, context });
+  if (Object.prototype.hasOwnProperty.call(changes, 'title') || Object.prototype.hasOwnProperty.call(operation, 'title')) {
+    normalized.title = normalizeText(changes.title || operation.title);
   }
 
-  if (action === 'update_todo_status') {
-    return updateTodoStatusAction({ latestUserMessage, input, context });
+  if (Object.prototype.hasOwnProperty.call(changes, 'details') || Object.prototype.hasOwnProperty.call(operation, 'details')) {
+    normalized.details = normalizeText(changes.details || operation.details);
   }
 
-  if (action === 'set_todo_due_date') {
-    return updateTodoDueDateAction({ latestUserMessage, input, context });
+  const status = normalizeStatus(changes.status || operation.status);
+  if (status) {
+    normalized.status = status;
   }
 
-  if (action === 'get_todo_details') {
-    return getTodoDetailsAction({ latestUserMessage, input, context });
+  const dueDateText = normalizeText(changes.dueDateText || operation.dueDateText);
+  if (dueDateText) {
+    normalized.dueDateText = dueDateText;
+  }
+
+  if (changes.clearDueDate === true || operation.clearDueDate === true) {
+    normalized.clearDueDate = true;
+  }
+
+  return normalized;
+}
+
+async function executeUpdateLikeOperation(operation, context, action) {
+  const selector = normalizeSelector(operation.selector, operation);
+  const tasks = applySelector(await loadCurrentUserTasks(context), selector, context.tenantTimeZone);
+  if (!tasks.length) {
+    return {
+      ok: false,
+      action,
+      message: 'No matching tasks were found for this operation.',
+    };
+  }
+
+  const changes = action === 'archive_tasks'
+    ? { status: 'Archived' }
+    : normalizeChanges(operation.changes || {}, operation);
+
+  const payload = {};
+  if (Object.prototype.hasOwnProperty.call(changes, 'title')) {
+    if (!changes.title) {
+      return { ok: false, action, message: 'Updated title cannot be empty.' };
+    }
+    payload.title = changes.title;
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'details')) {
+    payload.details = changes.details;
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'status')) {
+    if (!VALID_STATUSES.includes(changes.status)) {
+      return { ok: false, action, message: `Invalid status "${changes.status}".` };
+    }
+    payload.status = changes.status;
+  }
+  if (changes.clearDueDate) {
+    payload.dueDate = null;
+  } else if (changes.dueDateText) {
+    const dueDate = parseNaturalDueDate(changes.dueDateText, context.tenantTimeZone);
+    if (dueDate.ambiguous || !dueDate.iso) {
+      return {
+        ok: false,
+        action,
+        message: `Could not understand dueDateText "${changes.dueDateText}".`,
+      };
+    }
+    payload.dueDate = dueDate.iso;
+  }
+
+  if (!Object.keys(payload).length) {
+    return {
+      ok: false,
+      action,
+      message: `${action} requires at least one change.`,
+    };
+  }
+
+  await Promise.all(
+    tasks.map((task) => updateTodo({
+      authToken: context.authToken,
+      todoId: task.id,
+      payload,
+    }))
+  );
+
+  return {
+    ok: true,
+    action,
+    updated: tasks.map((task) => task.id),
+    count: tasks.length,
+    message: action === 'archive_tasks'
+      ? `Archived ${tasks.length} task${tasks.length === 1 ? '' : 's'}.`
+      : `Updated ${tasks.length} task${tasks.length === 1 ? '' : 's'}.`,
+  };
+}
+
+async function executeQueryOperation(operation, context) {
+  const selector = normalizeSelector(operation.selector, operation);
+  const matches = applySelector(await loadCurrentUserTasks(context), selector, context.tenantTimeZone);
+  const limit = selector.limit > 0 ? selector.limit : 10;
+  const visible = matches.slice(0, limit);
+
+  return {
+    ok: true,
+    action: 'query_tasks',
+    count: matches.length,
+    tasks: visible.map((task) => ({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      dueDate: task.rawDueDate || null,
+      details: task.details || '',
+    })),
+    message: !matches.length
+      ? 'No matching tasks found.'
+      : [
+          `Found ${matches.length} matching task${matches.length === 1 ? '' : 's'}:`,
+          ...visible.map(buildTaskLine),
+        ].join('\n'),
+  };
+}
+
+async function executeOperation(operation, context) {
+  const action = normalizeAction(operation.action);
+  if (!VALID_ACTIONS.includes(action)) {
+    return {
+      ok: false,
+      action: action || 'unknown',
+      message: `Unsupported action "${operation.action || ''}".`,
+    };
+  }
+
+  if (action === 'create_task') {
+    return executeCreateOperation(operation, context);
+  }
+
+  if (action === 'update_tasks') {
+    return executeUpdateLikeOperation(operation, context, action);
+  }
+
+  if (action === 'archive_tasks') {
+    return executeUpdateLikeOperation(operation, context, action);
+  }
+
+  return executeQueryOperation(operation, context);
+}
+
+function buildExecutionMessage(results = []) {
+  const messages = results.map((result) => result.message).filter(Boolean);
+  return messages.length
+    ? messages.join('\n\n')
+    : 'No task operations were executed.';
+}
+
+async function execute({ input = {}, context = {} }) {
+  const operations = normalizeOperations(input);
+  if (!operations.length) {
+    return {
+      message: [
+        'Use the task tool with an operations array.',
+        'Valid actions are create_task, update_tasks, archive_tasks, and query_tasks.',
+      ].join(' '),
+      sessionStatePatch: null,
+      results: [],
+    };
+  }
+
+  const results = [];
+  for (const operation of operations) {
+    try {
+      results.push(await executeOperation(operation, context));
+    } catch (error) {
+      results.push({
+        ok: false,
+        action: normalizeAction(operation.action) || 'unknown',
+        message: error?.message || 'Task operation failed.',
+      });
+    }
   }
 
   return {
-    message: 'I can create tasks, update task statuses, or set due dates. Tell me what task you want to manage.',
-    sessionStatePatch: context.pendingTodoFollowup || null,
+    message: buildExecutionMessage(results),
+    sessionStatePatch: null,
+    results,
   };
 }
 

@@ -100,9 +100,9 @@ function hasStrongSearchIntent(value) {
 
   const searchIntentPatterns = [
     /\b(find|search|look up|lookup|google|check)\b/,
-    /\b(current|latest|recent|today|upcoming|near me|nearby)\b/,
-    /\b(events?|concerts?|shows?|performances?|things to do)\b/,
-    /\b(weather|news|price|prices|availability|schedule|hours)\b/,
+    /\b(current|latest|recent|today|right now|upcoming|near me|nearby)\b/,
+    /\b(events?|concerts?|shows?|performances?|things to do|tour|tours|touring)\b/,
+    /\b(weather|news|price|prices|availability|schedule|hours|tickets?)\b/,
     /\b(what are|what's|what is|where can i|which are|show me|how much|how many|how big|how tall|how long|how heavy)\b/,
     /\b(restaurants?|hotels?|flights?|music|classical music|llms?|models?|weight|size|length|height|lifespan)\b/,
     /\b(who is|tell me about|information about|background on|learn about)\b/,

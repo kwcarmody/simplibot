@@ -282,6 +282,336 @@ function buildToolResultFollowupPrompt(toolKey) {
   return 'Use the tool result above to answer my last request. Do not emit a tool call.';
 }
 
+function getPromptToolDefinition(tools = [], toolKey) {
+  return getEnabledPromptTools(tools).find((tool) => tool.toolKey === toolKey)?.promptDefinition || null;
+}
+
+function getTodoManagerPromptDefinition(tools = []) {
+  return getPromptToolDefinition(tools, 'todo-manager');
+}
+
+function getWebSearchPromptDefinition(tools = []) {
+  return getPromptToolDefinition(tools, 'web-search');
+}
+
+function shouldRetryForMissingTaskToolCall({ adapterKey, tools = [], latestUserMessage = '', responseText = '' }) {
+  if (adapterKey !== 'default') {
+    return false;
+  }
+
+  const hasTodoManager = tools.some((tool) => tool.toolKey === 'todo-manager' && tool.enabled);
+  if (!hasTodoManager) {
+    return false;
+  }
+
+  const latest = String(latestUserMessage || '').toLowerCase();
+  const response = String(responseText || '').toLowerCase();
+  const looksLikeTaskRequest = /\b(task|tasks|todo|todos|reminder|reminders)\b/.test(latest)
+    || /\b(add|create|make|mark|update|archive|delete|list|show|find|query|remind)\b/.test(latest);
+  const looksLikeSyntheticTaskResult = /^(created|updated|archived|found|listed)\s+task\b/.test(response)
+    || /^(created|updated|archived|found)\s+\d+\s+task/.test(response)
+    || /\btask\s+[a-z0-9]{6,}\b/.test(response);
+
+  return looksLikeTaskRequest && looksLikeSyntheticTaskResult;
+}
+
+function isLikelyTaskActionRequest({ tools = [], latestUserMessage = '' }) {
+  const hasTodoManager = tools.some((tool) => tool.toolKey === 'todo-manager' && tool.enabled);
+  if (!hasTodoManager) {
+    return false;
+  }
+
+  const latest = String(latestUserMessage || '').toLowerCase();
+  return /\b(task|tasks|todo|todos|reminder|reminders)\b/.test(latest)
+    || /\b(add|create|make|mark|update|archive|delete|list|show|find|query|remind)\b/.test(latest);
+}
+
+function isLikelyWebSearchRequest({ tools = [], latestUserMessage = '' }) {
+  const hasWebSearch = tools.some((tool) => tool.toolKey === 'web-search' && tool.enabled);
+  if (!hasWebSearch) {
+    return false;
+  }
+
+  const webSearchService = getToolService('web-search');
+  if (!webSearchService?.shouldAutoExecute) {
+    return false;
+  }
+
+  return webSearchService.shouldAutoExecute({
+    latestUserMessage,
+    input: {
+      query: latestUserMessage,
+    },
+  });
+}
+
+function buildTaskPlannerMessages({ memorySettings, latestUserMessage, todoToolDefinition, now = new Date() }) {
+  const today = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'America/New_York',
+  }).format(now);
+  const currentTime = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+    timeZone: 'America/New_York',
+  }).format(now);
+  const inputs = Array.isArray(todoToolDefinition?.inputs)
+    ? todoToolDefinition.inputs.map((input) => `${input.key}${input.required ? ' (required)' : ''}: ${input.description}`).join('; ')
+    : '';
+
+  return [
+    {
+      role: 'system',
+      content: [
+        `Your name is ${memorySettings.botName}.`,
+        `You are ${memorySettings.botDescription}`,
+        `Today's date is ${today}.`,
+        `The current time is ${currentTime}.`,
+        'You are in a dedicated task-planning pass.',
+        'Your job is only to decide the correct todo-manager response for the user request.',
+        'If the request requires task creation, task update, task archive, or task query, respond with only one valid JSON tool call and no surrounding text.',
+        'Use this exact outer shape:',
+        '{"type":"tool_call","tool":"todo-manager","input":{"operations":[...]}}',
+        'If required information is missing, ask one concise follow-up question instead of pretending a task was created or updated.',
+        'Never claim that a task was created, updated, archived, or queried unless you return a tool call and the tool is executed later.',
+        'Preserve the user timing phrase in dueDateText when possible instead of inventing absolute dates unless the phrase is already explicit.',
+        `todo-manager description: ${todoToolDefinition?.description || ''}`,
+        inputs ? `todo-manager inputs: ${inputs}` : '',
+      ].filter(Boolean).join(' '),
+    },
+    {
+      role: 'user',
+      content: latestUserMessage,
+    },
+  ];
+}
+
+async function planTodoManagerToolCall({ modelSettings, memorySettings, latestUserMessage, todoToolDefinition, adapter, now }) {
+  const plannerMessages = buildTaskPlannerMessages({
+    memorySettings,
+    latestUserMessage,
+    todoToolDefinition,
+    now,
+  });
+  logToolDebug('task-planner-request', {
+    model: modelSettings.model,
+    latestUserMessage,
+    messageCount: plannerMessages.length,
+  });
+  const plannerResponse = await requestChatCompletion({
+    modelSettings,
+    messages: plannerMessages,
+  });
+  const parsedPlannerResponse = adapter.parseAssistantResponse(plannerResponse);
+  logToolDebug('task-planner-response', {
+    response: plannerResponse,
+    parsedResponse: parsedPlannerResponse,
+  });
+  return parsedPlannerResponse;
+}
+
+function buildSearchPlannerMessages({ memorySettings, latestUserMessage, webSearchToolDefinition, now = new Date() }) {
+  const today = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'America/New_York',
+  }).format(now);
+  const currentTime = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+    timeZone: 'America/New_York',
+  }).format(now);
+  const inputs = Array.isArray(webSearchToolDefinition?.inputs)
+    ? webSearchToolDefinition.inputs.map((input) => `${input.key}${input.required ? ' (required)' : ''}: ${input.description}`).join('; ')
+    : '';
+
+  return [
+    {
+      role: 'system',
+      content: [
+        `Your name is ${memorySettings.botName}.`,
+        `You are ${memorySettings.botDescription}`,
+        `Today's date is ${today}.`,
+        `The current time is ${currentTime}.`,
+        'You are in a dedicated search-planning pass.',
+        'Your job is only to decide the correct web-search response for the user request.',
+        'If the request needs current, recent, factual, lookup, or web-grounded information, respond with only one valid JSON tool call and no surrounding text.',
+        'Use this exact outer shape:',
+        '{"type":"tool_call","tool":"web-search","input":{"query":"..."}}',
+        'Rewrite the user request into a concise search query when helpful, but preserve the user intent and key constraints.',
+        'For requests about people, organizations, events, touring, schedules, availability, current status, or anything the web could verify, use web-search instead of answering from memory.',
+        'If web search is not needed, answer the user directly in one concise sentence and do not emit a tool call.',
+        'Never claim that you searched the web, found results, confirmed facts, or checked sources unless you return a tool call and the tool is executed later.',
+        `web-search description: ${webSearchToolDefinition?.description || ''}`,
+        inputs ? `web-search inputs: ${inputs}` : '',
+      ].filter(Boolean).join(' '),
+    },
+    {
+      role: 'user',
+      content: latestUserMessage,
+    },
+  ];
+}
+
+async function planWebSearchToolCall({ modelSettings, memorySettings, latestUserMessage, webSearchToolDefinition, adapter, now }) {
+  const plannerMessages = buildSearchPlannerMessages({
+    memorySettings,
+    latestUserMessage,
+    webSearchToolDefinition,
+    now,
+  });
+  logToolDebug('search-planner-request', {
+    model: modelSettings.model,
+    latestUserMessage,
+    messageCount: plannerMessages.length,
+  });
+  const plannerResponse = await requestChatCompletion({
+    modelSettings,
+    messages: plannerMessages,
+  });
+  const parsedPlannerResponse = adapter.parseAssistantResponse(plannerResponse);
+  logToolDebug('search-planner-response', {
+    response: plannerResponse,
+    parsedResponse: parsedPlannerResponse,
+  });
+  return parsedPlannerResponse;
+}
+
+async function repairWebSearchToolCall({ modelSettings, latestUserMessage, adapter, plannerResponse }) {
+  const retryMessages = [
+    {
+      role: 'system',
+      content: [
+        'The previous assistant response was invalid because this request requires grounded web search and you answered without a tool call.',
+        'You must now repair the response.',
+        'Respond with only one valid JSON tool call and no surrounding text.',
+        'Use the web-search tool.',
+        'Use this exact outer shape:',
+        '{"type":"tool_call","tool":"web-search","input":{"query":"..."}}',
+        'Do not answer the question directly.',
+        'Do not claim you searched, found results, or confirmed facts.',
+        'Do not wrap the JSON in markdown.',
+        'Do not output any text before or after the JSON.',
+      ].join(' '),
+    },
+    {
+      role: 'assistant',
+      content: String(plannerResponse || '').trim(),
+    },
+    {
+      role: 'user',
+      content: latestUserMessage,
+    },
+  ];
+
+  const retryResponse = await requestChatCompletion({
+    modelSettings,
+    messages: retryMessages,
+  });
+  const parsedRetryResponse = adapter.parseAssistantResponse(retryResponse);
+  logToolDebug('search-planner-retry', {
+    originalResponse: plannerResponse,
+    retryResponse,
+    parsedResponse: parsedRetryResponse,
+  });
+  return parsedRetryResponse;
+}
+
+function buildSearchSynthesisMessages({
+  memorySettings,
+  latestUserMessage,
+  groundedResult,
+  now = new Date(),
+}) {
+  const today = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'America/New_York',
+  }).format(now);
+
+  return [
+    {
+      role: 'system',
+      content: [
+        `Your name is ${memorySettings.botName}.`,
+        `You are ${memorySettings.botDescription}`,
+        `Today's date is ${today}.`,
+        'You are in a dedicated search-synthesis pass.',
+        'Your job is to answer the user using only the grounded search evidence provided below.',
+        'Do not invent facts, dates, names, prices, schedules, events, or sources.',
+        'Do not use outside knowledge.',
+        'If the grounded evidence is insufficient, say so plainly and ask one concise follow-up or suggest a narrower query.',
+        'When there are multiple grounded results, prefer a short intro followed by a flat bullet list.',
+        'Include source hostname or URL inline when useful.',
+        'Do not emit a tool call.',
+      ].join(' '),
+    },
+    {
+      role: 'system',
+      content: `Original user request: ${latestUserMessage}`,
+    },
+    {
+      role: 'system',
+      content: `Grounded web search result: ${JSON.stringify(groundedResult)}`,
+    },
+    {
+      role: 'user',
+      content: buildToolResultFollowupPrompt('web-search'),
+    },
+  ];
+}
+
+async function synthesizeWebSearchResult({
+  modelSettings,
+  memorySettings,
+  latestUserMessage,
+  execution,
+  now,
+}) {
+  const groundedResult = execution.service?.buildGroundedResult
+    ? execution.service.buildGroundedResult({
+        result: execution.result,
+        latestUserMessage,
+      })
+    : execution.result;
+  const synthesisMessages = buildSearchSynthesisMessages({
+    memorySettings,
+    latestUserMessage,
+    groundedResult,
+    now,
+  });
+  const finalText = await requestChatCompletion({
+    modelSettings,
+    messages: synthesisMessages,
+  });
+
+  logToolDebug('search-synthesis-response', {
+    toolKey: execution.tool.toolKey,
+    text: finalText,
+    groundedResult,
+  });
+
+  return {
+    text: finalText,
+    toolStatePatch: execution.result?.sessionStatePatch ?? null,
+    debug: {
+      toolAttempted: true,
+      toolExecuted: true,
+      toolKey: execution.tool.toolKey,
+      renderedBy: 'search-synthesis',
+    },
+  };
+}
+
 async function generateChatReply({
   modelSettings,
   memorySettings,
@@ -304,6 +634,189 @@ async function generateChatReply({
   });
   if (directExecutionResult) {
     return directExecutionResult;
+  }
+
+  if (isLikelyTaskActionRequest({ tools, latestUserMessage })) {
+    const todoToolDefinition = getTodoManagerPromptDefinition(tools);
+    if (todoToolDefinition) {
+      const plannedResponse = await planTodoManagerToolCall({
+        modelSettings,
+        memorySettings,
+        latestUserMessage,
+        todoToolDefinition,
+        adapter,
+        now,
+      });
+
+      if (plannedResponse.type === 'tool_call') {
+        let plannedExecution;
+
+        try {
+          plannedExecution = await executeToolCall({
+            toolCall: plannedResponse,
+            tools,
+            latestUserMessage,
+            toolContext,
+          });
+        } catch (error) {
+          if (error?.code !== 'TOOL_EXECUTION_DENIED') {
+            throw error;
+          }
+
+          return {
+            text: 'I couldn’t use that tool for this request. Please rephrase or ask a little more specifically.',
+            toolStatePatch: null,
+            debug: {
+              toolAttempted: true,
+              toolExecuted: false,
+              deniedTool: plannedResponse.tool,
+              adapter: adapterKey,
+              renderedBy: 'task-planner',
+            },
+          };
+        }
+
+        const renderedText = plannedExecution.service?.formatResultForAssistant
+          ? plannedExecution.service.formatResultForAssistant({
+              result: plannedExecution.result,
+              latestUserMessage,
+            })
+          : String(plannedExecution.result?.message || '').trim();
+
+        logToolDebug('task-planner-rendered-response', {
+          toolKey: plannedExecution.tool.toolKey,
+          text: renderedText,
+        });
+
+        return {
+          text: renderedText,
+          toolStatePatch: plannedExecution.result?.sessionStatePatch ?? null,
+          debug: {
+            toolAttempted: true,
+            toolExecuted: true,
+            toolKey: plannedExecution.tool.toolKey,
+            adapter: adapterKey,
+            renderedBy: 'task-planner',
+          },
+        };
+      }
+
+      return {
+        text: plannedResponse.text,
+        debug: {
+          toolAttempted: false,
+          toolExecuted: false,
+          adapter: adapterKey,
+          renderedBy: 'task-planner',
+        },
+      };
+    }
+  }
+
+  if (isLikelyWebSearchRequest({ tools, latestUserMessage })) {
+    const webSearchToolDefinition = getWebSearchPromptDefinition(tools);
+    if (webSearchToolDefinition) {
+      const plannedResponse = await planWebSearchToolCall({
+        modelSettings,
+        memorySettings,
+        latestUserMessage,
+        webSearchToolDefinition,
+        adapter,
+        now,
+      });
+
+      const effectivePlannedResponse = plannedResponse.type === 'tool_call'
+        ? plannedResponse
+        : await repairWebSearchToolCall({
+            modelSettings,
+            latestUserMessage,
+            adapter,
+            plannerResponse: plannedResponse.text,
+          });
+
+      if (effectivePlannedResponse.type === 'tool_call') {
+        let plannedExecution;
+
+        try {
+          plannedExecution = await executeToolCall({
+            toolCall: effectivePlannedResponse,
+            tools,
+            latestUserMessage,
+            toolContext,
+          });
+        } catch (error) {
+          if (error?.code !== 'TOOL_EXECUTION_DENIED') {
+            throw error;
+          }
+
+          return {
+            text: 'I couldn’t use that tool for this request. Please rephrase or ask a little more specifically.',
+            toolStatePatch: null,
+            debug: {
+              toolAttempted: true,
+              toolExecuted: false,
+              deniedTool: effectivePlannedResponse.tool,
+              adapter: adapterKey,
+              renderedBy: 'search-planner',
+            },
+          };
+        }
+
+        if (plannedExecution.tool.toolKey === 'web-search') {
+          const synthesized = await synthesizeWebSearchResult({
+            modelSettings,
+            memorySettings,
+            latestUserMessage,
+            execution: plannedExecution,
+            now,
+          });
+
+          return {
+            ...synthesized,
+            debug: {
+              ...synthesized.debug,
+              adapter: adapterKey,
+              plannedBy: 'search-planner',
+            },
+          };
+        }
+
+        const renderedText = plannedExecution.service?.formatResultForAssistant
+          ? plannedExecution.service.formatResultForAssistant({
+              result: plannedExecution.result,
+              latestUserMessage,
+            })
+          : String(plannedExecution.result?.message || '').trim();
+
+        logToolDebug('search-planner-rendered-response', {
+          toolKey: plannedExecution.tool.toolKey,
+          text: renderedText,
+        });
+
+        return {
+          text: renderedText,
+          toolStatePatch: plannedExecution.result?.sessionStatePatch ?? null,
+          debug: {
+            toolAttempted: true,
+            toolExecuted: true,
+            toolKey: plannedExecution.tool.toolKey,
+            adapter: adapterKey,
+            renderedBy: 'search-planner',
+          },
+        };
+      }
+
+      return {
+        text: 'I couldn’t complete that web search request because the model did not produce a valid search tool call. Please try again.',
+        debug: {
+          toolAttempted: true,
+          toolExecuted: false,
+          adapter: adapterKey,
+          renderedBy: 'search-planner',
+          reason: 'missing_valid_search_tool_call',
+        },
+      };
+    }
   }
 
   const firstPassMessages = adapter.buildMessages({
@@ -329,9 +842,64 @@ async function generateChatReply({
     parsedResponse,
   });
 
-  if (parsedResponse.type !== 'tool_call') {
+  let effectiveParsedResponse = parsedResponse;
+
+  if (effectiveParsedResponse.type !== 'tool_call' && shouldRetryForMissingTaskToolCall({
+    adapterKey,
+    tools,
+    latestUserMessage,
+    responseText: firstPassResponse,
+  })) {
+    const retryMessages = [
+      ...firstPassMessages,
+      {
+        role: 'system',
+        content: [
+          'The previous assistant response was invalid because it claimed a task-side effect without a tool call.',
+          'You must now repair the response.',
+          'If the user request needs task creation, task update, task archive, or task query, respond with only one valid JSON tool call and no surrounding text.',
+          'Use the todo-manager tool.',
+          'Use this exact outer shape:',
+          '{"type":"tool_call","tool":"todo-manager","input":{"operations":[...]}}',
+          'Interpret weekday-only due dates like Monday or Tuesday as the next upcoming occurrence of that weekday unless the user explicitly says otherwise.',
+          'Preserve the user timing phrase in dueDateText when possible, such as "Wed at 4 pm", "this coming Friday at 1 pm", or "in 2 months".',
+          'Ordinal date phrases like "April 30th" or "October 1st" are valid and should be preserved in dueDateText.',
+          'Do not acknowledge, apologize, explain, or describe what you will do.',
+          'Do not wrap the JSON in markdown.',
+          'Do not output any text before or after the JSON.',
+        ].join(' '),
+      },
+    ];
+    const retryResponse = await requestChatCompletion({
+      modelSettings,
+      messages: retryMessages,
+    });
+    effectiveParsedResponse = adapter.parseAssistantResponse(retryResponse);
+    logToolDebug('missing-task-tool-call-retry', {
+      originalResponse: firstPassResponse,
+      retryResponse,
+      parsedResponse: effectiveParsedResponse,
+    });
+  }
+
+  if (effectiveParsedResponse.type !== 'tool_call' && isLikelyTaskActionRequest({
+    tools,
+    latestUserMessage,
+  })) {
     return {
-      text: parsedResponse.text,
+      text: 'I couldn’t complete that task request because the model did not produce a valid tool call. Please try again.',
+      debug: {
+        toolAttempted: true,
+        toolExecuted: false,
+        adapter: adapterKey,
+        reason: 'missing_valid_task_tool_call',
+      },
+    };
+  }
+
+  if (effectiveParsedResponse.type !== 'tool_call') {
+    return {
+      text: effectiveParsedResponse.text,
       debug: {
         toolAttempted: false,
         toolExecuted: false,
@@ -344,7 +912,7 @@ async function generateChatReply({
 
   try {
     execution = await executeToolCall({
-      toolCall: parsedResponse,
+      toolCall: effectiveParsedResponse,
       tools,
       latestUserMessage,
       toolContext,
@@ -365,7 +933,7 @@ async function generateChatReply({
       debug: {
         toolAttempted: true,
         toolExecuted: false,
-        deniedTool: parsedResponse.tool,
+        deniedTool: effectiveParsedResponse.tool,
         adapter: adapterKey,
       },
     };
@@ -397,6 +965,24 @@ async function generateChatReply({
       content: buildToolResultFollowupPrompt(execution.tool.toolKey),
     },
   ];
+
+  if (execution.tool.toolKey === 'web-search') {
+    const synthesized = await synthesizeWebSearchResult({
+      modelSettings,
+      memorySettings,
+      latestUserMessage,
+      execution,
+      now,
+    });
+
+    return {
+      ...synthesized,
+      debug: {
+        ...synthesized.debug,
+        adapter: adapterKey,
+      },
+    };
+  }
 
   if (execution.service?.formatResultForAssistant) {
     const renderedText = execution.service.formatResultForAssistant({

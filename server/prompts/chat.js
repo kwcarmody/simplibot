@@ -35,12 +35,6 @@ function buildChatSystemPrompt(memorySettings, options = {}) {
   systemParts.push('For greetings, casual chat, acknowledgements, and social conversation, respond naturally and briefly without steering into profile-based topics.');
   systemParts.push('Do not invent facts about your creator, organization, or identity beyond what is explicitly provided in this prompt.');
 
-  if (conversationContext.pendingTodoFollowup?.todoId) {
-    systemParts.push(
-      `Pending todo follow-up: task ${conversationContext.pendingTodoFollowup.todoId} (${conversationContext.pendingTodoFollowup.title || 'Untitled task'}) was just created without a due date. If the user now provides a date/time or confirms they want to set one, prefer the todo-manager tool to set the due date for that task.`
-    );
-  }
-
   if (tools.length) {
     const toolLines = tools.map((tool) => {
       const inputs = Array.isArray(tool.inputs) && tool.inputs.length
