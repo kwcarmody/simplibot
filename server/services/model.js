@@ -80,6 +80,10 @@ async function requestChatCompletion({ modelSettings, messages }) {
     messages,
   };
 
+  if (resolveModelAdapterKey(modelSettings) === 'default' && modelSettings.thinking) {
+    payload.think = true;
+  }
+
   const response = await fetchWithTimeout(resolveChatEndpoint(modelSettings.endpoint, modelSettings.apiType), {
     method: 'POST',
     headers: buildModelHeaders({ provider: modelSettings.provider, apiKey: modelSettings.apiKey }),
