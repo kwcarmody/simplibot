@@ -180,10 +180,28 @@ function validateTodoPayload(payload) {
   return '';
 }
 
-async function listTodosForTenant({ authToken, tenantId, tenantUsers = [], tenantTimeZone = DEFAULT_TIME_ZONE_LABEL }) {
+async function listTodosForTenant({
+  authToken,
+  tenantId,
+  currentUserId,
+  tenantUsers = [],
+  tenantTimeZone = DEFAULT_TIME_ZONE_LABEL,
+  status,
+}) {
   const client = createClient(authToken);
+  const normalizedStatus = String(status || '').trim();
+  const filters = [
+    `tenant = "${tenantId}"`,
+    'ownerType = "user"',
+    `ownerUser = "${currentUserId}"`,
+  ];
+
+  if (normalizedStatus && normalizedStatus !== 'All') {
+    filters.push(`status = "${normalizedStatus}"`);
+  }
+
   const result = await client.collection(TODOS_COLLECTION).getList(1, 200, {
-    filter: `tenant = "${tenantId}"`,
+    filter: filters.join(' && '),
     sort: '+dueDate,+created',
   });
 

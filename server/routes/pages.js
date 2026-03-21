@@ -35,11 +35,14 @@ function createPageRouter() {
 
     if (route === 'todos') {
       try {
+        const todoStatus = String(req.query.todoStatus || 'ToDo');
         const todos = await listTodosForTenant({
           authToken: req.session.auth.token,
           tenantId: req.session.tenant.id,
+          currentUserId: req.session.auth.user.id,
           tenantUsers: req.session.tenant.users || [],
           tenantTimeZone: req.session.tenant.timeZone,
+          status: todoStatus,
         });
         const isNewTodo = req.query.todo === 'new';
         const selectedTodo = isNewTodo ? {

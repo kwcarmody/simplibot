@@ -42,7 +42,11 @@ function createTodosRouter() {
     try {
       if (todoId) {
         const existing = await getTodoById({ authToken: req.session.auth.token, todoId });
+        const existingOwnerUser = Array.isArray(existing.ownerUser) ? existing.ownerUser[0] : existing.ownerUser;
         if (existing.tenant !== req.session.tenant.id) {
+          return res.status(403).redirect('/todos');
+        }
+        if (existing.ownerType !== 'user' || existingOwnerUser !== currentUserId) {
           return res.status(403).redirect('/todos');
         }
         await updateTodo({ authToken: req.session.auth.token, todoId, payload });

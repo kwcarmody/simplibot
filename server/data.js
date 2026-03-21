@@ -367,7 +367,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
   const toolSearch = String(query.toolSearch || "");
   const reportSearch = String(query.reportSearch || "");
   const todoSearch = String(query.todoSearch || "");
-  const todoStatus = String(query.todoStatus || "All");
+  const todoStatus = String(query.todoStatus || "ToDo");
   const selectedTool = String(query.selectedTool || toolOptions[0]);
 
   const visibleTools = state.tools.filter((tool) =>

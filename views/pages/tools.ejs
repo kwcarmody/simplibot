@@ -23,12 +23,12 @@
             <p class="tool-description mb-0"><%= tool.description %></p>
           </div>
           <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" <%= tool.enabled ? 'checked' : '' %> />
+            <input class="form-check-input" type="checkbox" />
           </div>
         </div>
         <div class="card-footer-row">
-          <div class="<%= tool.enabled ? 'status-label-enabled' : 'status-label-disabled' %>">
-            <%= tool.enabled ? 'Enabled' : 'Disabled' %>
+          <div class="status-label-disabled">
+            Disabled
           </div>
           <a class="tool-config-button" href="/tools?<%= new URLSearchParams({ toolSearch: filters.toolSearch, configureTool: tool.id }).toString() %>">
             <span>Configure</span>
