@@ -28,7 +28,7 @@
         <div data-model-provider-section="Ollama-Cloud" class="<%= settings.model.provider === 'Ollama-Cloud' ? '' : 'd-none' %>">
           <div class="settings-stack mb-3">
             <div class="w-100">
-              <label class="form-label">Model</label>
+              <label class="form-label">Model ID</label>
               <select class="form-select" name="model" data-model-select="Ollama-Cloud">
                 <% ["minimax-m2.7:cloud", "deepseek-v3.2:cloud", "qwen3.5:397b-cloud"].forEach((item) => { %>
                   <option value="<%= item %>" <%= settings.model.provider === 'Ollama-Cloud' && settings.model.model === item ? 'selected' : '' %>><%= item %></option>
@@ -36,18 +36,64 @@
               </select>
             </div>
           </div>
+ 
           <div class="settings-stack mb-3">
             <div class="w-100">
               <label class="form-label">API Endpoint</label>
               <input class="form-control" name="endpoint" value="<%= settings.model.provider === 'Ollama-Cloud' ? settings.model.endpoint : '' %>" />
             </div>
           </div>
-          <div class="settings-stack">
+
+          <div class="settings-stack mb-3">
             <div class="w-100">
               <label class="form-label">API Token</label>
               <input class="form-control" name="apiKey" value="<%= settings.model.provider === 'Ollama-Cloud' ? settings.model.apiKey : '' %>" />
             </div>
           </div>
+
+          <div class="settings-stack mb-3">
+            <div class="w-100">
+              <label class="form-label">Thinking</label>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" checked/>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-stack mb-3">
+            <div class="w-100">
+              <label class="form-label">Tools</label>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" checked/>
+              </div>
+            </div>
+          </div>
+          
+          <div class="settings-stack mb-3">
+            <div class="w-100">
+              <label class="form-label">API Type</label>
+              <select class="form-select" name="model" data-model-select="Ollama-Cloud">
+                  <option value="Open AI Completions"></option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-stack mb-3">
+            <div class="w-100">
+              <label class="form-label">Context Window</label>
+              <input class="form-control" name="apiKey" value="0" />
+            </div>
+          </div>
+          
+          <div class="settings-stack mb-3">
+            <div class="w-100">
+              <label class="form-label">Max Tokens</label>
+              <input class="form-control" name="apiKey" value="0" />
+            </div>
+          </div>
+
+          
+
         </div>
         <div data-model-provider-section="Ollama-Local" class="<%= settings.model.provider === 'Ollama-Local' ? '' : 'd-none' %>">
           <div class="settings-stack mb-3">
