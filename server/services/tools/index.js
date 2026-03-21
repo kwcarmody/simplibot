@@ -4,6 +4,7 @@ const filesystemService = require('./filesystem');
 const crmService = require('./crm');
 const automationService = require('./automation');
 const monitoringService = require('./monitoring');
+const todoManagerService = require('./todo-manager');
 
 const services = {
   'web-search': webSearchService,
@@ -12,6 +13,7 @@ const services = {
   crm: crmService,
   automation: automationService,
   monitoring: monitoringService,
+  'todo-manager': todoManagerService,
 };
 
 function getToolService(serviceKey) {

@@ -1,6 +1,7 @@
 function buildChatSystemPrompt(memorySettings, options = {}) {
   const tools = Array.isArray(options.tools) ? options.tools : [];
   const adapterInstructions = String(options.adapterInstructions || '').trim();
+  const conversationContext = options.conversationContext || {};
   const now = options.now instanceof Date ? options.now : new Date();
   const today = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
@@ -34,6 +35,12 @@ function buildChatSystemPrompt(memorySettings, options = {}) {
   systemParts.push('For greetings, casual chat, acknowledgements, and social conversation, respond naturally and briefly without steering into profile-based topics.');
   systemParts.push('Do not invent facts about your creator, organization, or identity beyond what is explicitly provided in this prompt.');
 
+  if (conversationContext.pendingTodoFollowup?.todoId) {
+    systemParts.push(
+      `Pending todo follow-up: task ${conversationContext.pendingTodoFollowup.todoId} (${conversationContext.pendingTodoFollowup.title || 'Untitled task'}) was just created without a due date. If the user now provides a date/time or confirms they want to set one, prefer the todo-manager tool to set the due date for that task.`
+    );
+  }
+
   if (tools.length) {
     const toolLines = tools.map((tool) => {
       const inputs = Array.isArray(tool.inputs) && tool.inputs.length
@@ -56,11 +63,18 @@ function buildChatSystemPrompt(memorySettings, options = {}) {
   return systemParts.join(' ');
 }
 
-function buildChatMessages({ memorySettings, chatMessages, tools = [], adapterInstructions = '', now = new Date() }) {
+function buildChatMessages({
+  memorySettings,
+  chatMessages,
+  tools = [],
+  adapterInstructions = '',
+  conversationContext = {},
+  now = new Date(),
+}) {
   return [
     {
       role: 'system',
-      content: buildChatSystemPrompt(memorySettings, { tools, adapterInstructions, now }),
+      content: buildChatSystemPrompt(memorySettings, { tools, adapterInstructions, conversationContext, now }),
     },
     ...chatMessages.map((message) => ({
       role: message.role === 'assistant' ? 'assistant' : 'user',

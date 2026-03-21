@@ -19,8 +19,10 @@ function getSessionSettings(req) {
 }
 
 function ensureChatSession(req) {
-  req.session.chat = req.session.chat || { messages: [] };
+  req.session.chat = req.session.chat || { messages: [], pendingTodoFollowup: null, pendingTodoQuery: null };
   req.session.chat.messages = Array.isArray(req.session.chat.messages) ? req.session.chat.messages : [];
+  req.session.chat.pendingTodoFollowup = req.session.chat.pendingTodoFollowup || null;
+  req.session.chat.pendingTodoQuery = req.session.chat.pendingTodoQuery || null;
   return req.session.chat;
 }
 

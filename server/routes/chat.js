@@ -47,7 +47,36 @@ function createChatRouter() {
         memorySettings,
         chatMessages: chatState.messages,
         tools,
+        conversationContext: {
+          pendingTodoFollowup: chatState.pendingTodoFollowup || null,
+          pendingTodoQuery: chatState.pendingTodoQuery || null,
+        },
+        toolContext: {
+          authToken: req.session.auth.token,
+          tenantId: req.session.tenant.id,
+          currentUserId: req.session.auth.user.id,
+          tenantTimeZone: req.session.tenant.timeZone,
+          pendingTodoFollowup: chatState.pendingTodoFollowup || null,
+          pendingTodoQuery: chatState.pendingTodoQuery || null,
+        },
       });
+      if (Object.prototype.hasOwnProperty.call(assistantResult, 'toolStatePatch')) {
+        const patch = assistantResult.toolStatePatch;
+        if (patch === null) {
+          chatState.pendingTodoFollowup = null;
+          chatState.pendingTodoQuery = null;
+        } else if (patch && (patch.todoId || patch.action === 'awaiting_due_date')) {
+          chatState.pendingTodoFollowup = patch;
+          chatState.pendingTodoQuery = null;
+        } else if (patch && typeof patch === 'object') {
+          if (Object.prototype.hasOwnProperty.call(patch, 'pendingTodoFollowup')) {
+            chatState.pendingTodoFollowup = patch.pendingTodoFollowup || null;
+          }
+          if (Object.prototype.hasOwnProperty.call(patch, 'pendingTodoQuery')) {
+            chatState.pendingTodoQuery = patch.pendingTodoQuery || null;
+          }
+        }
+      }
       const assistantMessage = {
         id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         role: 'assistant',
@@ -74,7 +103,7 @@ function createChatRouter() {
     if (!req.session.auth?.token) {
       return res.status(401).json({ ok: false, error: 'Sign in required.' });
     }
-    req.session.chat = { messages: [] };
+    req.session.chat = { messages: [], pendingTodoFollowup: null, pendingTodoQuery: null };
     return res.json({ ok: true });
   });
 

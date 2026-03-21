@@ -15,11 +15,12 @@ function buildToolProtocolPrompt() {
   ].join(' ');
 }
 
-function buildMessages({ memorySettings, chatMessages, tools = [], now }) {
+function buildMessages({ memorySettings, chatMessages, tools = [], conversationContext = {}, now }) {
   return buildChatMessages({
     memorySettings,
     chatMessages,
     tools,
+    conversationContext,
     adapterInstructions: buildToolProtocolPrompt(),
     now,
   });

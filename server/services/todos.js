@@ -219,6 +219,57 @@ async function getTodoById({ authToken, todoId }) {
   return client.collection(TODOS_COLLECTION).getOne(todoId);
 }
 
+async function getOwnedTodoById({
+  authToken,
+  todoId,
+  tenantId,
+  currentUserId,
+  tenantTimeZone = DEFAULT_TIME_ZONE_LABEL,
+}) {
+  const record = await getTodoById({ authToken, todoId });
+  const ownerUser = Array.isArray(record.ownerUser) ? record.ownerUser[0] : record.ownerUser;
+
+  if (
+    !record ||
+    record.tenant !== tenantId ||
+    record.ownerType !== 'user' ||
+    ownerUser !== currentUserId
+  ) {
+    return null;
+  }
+
+  return mapTodoRecord(record, new Map(), tenantTimeZone);
+}
+
+async function findTodosForUserByTitle({
+  authToken,
+  tenantId,
+  currentUserId,
+  title,
+  tenantTimeZone = DEFAULT_TIME_ZONE_LABEL,
+}) {
+  const normalizedTitle = String(title || '').trim().toLowerCase();
+  if (!normalizedTitle) {
+    return [];
+  }
+
+  const todos = await listTodosForTenant({
+    authToken,
+    tenantId,
+    currentUserId,
+    tenantUsers: [],
+    tenantTimeZone,
+    status: 'All',
+  });
+
+  const exactMatches = todos.filter((todo) => String(todo.title || '').trim().toLowerCase() === normalizedTitle);
+  if (exactMatches.length) {
+    return exactMatches;
+  }
+
+  return todos.filter((todo) => String(todo.title || '').trim().toLowerCase().includes(normalizedTitle));
+}
+
 async function createTodo({ authToken, payload }) {
   const client = createClient(authToken);
   return client.collection(TODOS_COLLECTION).create(payload);
@@ -231,9 +282,11 @@ async function updateTodo({ authToken, todoId, payload }) {
 
 module.exports = {
   createTodo,
+  findTodosForUserByTitle,
   formatDueDate,
   formatDueDateForInput,
   getTodoById,
+  getOwnedTodoById,
   listTodosForTenant,
   mapTodoRecord,
   normalizeTodoPayload,

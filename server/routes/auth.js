@@ -104,7 +104,7 @@ function createAuthRouter() {
         settings: mapUserSettingsRecordToSettings(userSettingsRecord),
       };
 
-      req.session.chat = { messages: [] };
+      req.session.chat = { messages: [], pendingTodoFollowup: null, pendingTodoQuery: null };
 
       if (isFetchRequest) {
         return res.json({ ok: true, redirect: redirectTo });

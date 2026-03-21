@@ -110,7 +110,58 @@ function getEnabledPromptTools(tools = []) {
     .filter(Boolean);
 }
 
-async function executeToolCall({ toolCall, tools = [], latestUserMessage = '' }) {
+async function tryDirectToolExecution({ tools = [], latestUserMessage = '', toolContext = {}, modelDefinition }) {
+  for (const tool of tools.filter((item) => item?.enabled)) {
+    const service = getToolService(tool.serviceKey || tool.toolKey);
+    if (!service?.shouldDirectHandle || !service.shouldDirectHandle({
+      latestUserMessage,
+      context: toolContext,
+      tool,
+    })) {
+      continue;
+    }
+
+    const execution = await executeToolCall({
+      toolCall: {
+        type: 'tool_call',
+        tool: tool.toolKey,
+        input: {},
+      },
+      tools,
+      latestUserMessage,
+      toolContext,
+    });
+
+    const renderedText = execution.service?.formatResultForAssistant
+      ? execution.service.formatResultForAssistant({
+          result: execution.result,
+          latestUserMessage,
+        })
+      : String(execution.result?.message || '').trim();
+
+    logToolDebug('tool-service-rendered-response', {
+      toolKey: execution.tool.toolKey,
+      text: renderedText,
+      direct: true,
+    });
+
+    return {
+      text: renderedText,
+      toolStatePatch: execution.result?.sessionStatePatch ?? null,
+      debug: {
+        toolAttempted: true,
+        toolExecuted: true,
+        toolKey: execution.tool.toolKey,
+        adapter: modelDefinition?.adapterKey || 'default',
+        renderedBy: 'tool-service-direct',
+      },
+    };
+  }
+
+  return null;
+}
+
+async function executeToolCall({ toolCall, tools = [], latestUserMessage = '', toolContext = {} }) {
   logToolDebug('tool-call-received', {
     toolCall,
     latestUserMessage,
@@ -134,6 +185,7 @@ async function executeToolCall({ toolCall, tools = [], latestUserMessage = '' })
     latestUserMessage,
     input: toolCall.input || {},
     tool,
+    context: toolContext,
   })) {
     logToolDebug('tool-call-denied', {
       toolKey: tool.toolKey,
@@ -155,6 +207,8 @@ async function executeToolCall({ toolCall, tools = [], latestUserMessage = '' })
   const result = await service.execute({
     input: toolCall.input || {},
     config: tool.config || {},
+    context: toolContext,
+    latestUserMessage,
   });
 
   logToolDebug('tool-call-result', {
@@ -210,17 +264,35 @@ function buildToolResultFollowupPrompt(toolKey) {
   return 'Use the tool result above to answer my last request. Do not emit a tool call.';
 }
 
-async function generateChatReply({ modelSettings, memorySettings, chatMessages, tools = [] }) {
+async function generateChatReply({
+  modelSettings,
+  memorySettings,
+  chatMessages,
+  tools = [],
+  conversationContext = {},
+  toolContext = {},
+}) {
   const modelDefinition = getModelDefinition(modelSettings.model);
   const adapter = getModelAdapter(modelDefinition?.adapterKey || 'default');
   const promptTools = getEnabledPromptTools(tools).map((tool) => tool.promptDefinition);
   const now = new Date();
 
   const latestUserMessage = [...chatMessages].reverse().find((message) => message.role === 'user')?.text || '';
+  const directExecutionResult = await tryDirectToolExecution({
+    tools,
+    latestUserMessage,
+    toolContext,
+    modelDefinition,
+  });
+  if (directExecutionResult) {
+    return directExecutionResult;
+  }
+
   const firstPassMessages = adapter.buildMessages({
     memorySettings,
     chatMessages,
     tools: promptTools,
+    conversationContext,
     now,
   });
   logToolDebug('first-pass-request', {
@@ -257,34 +329,21 @@ async function generateChatReply({ modelSettings, memorySettings, chatMessages, 
       toolCall: parsedResponse,
       tools,
       latestUserMessage,
+      toolContext,
     });
   } catch (error) {
     if (error?.code !== 'TOOL_EXECUTION_DENIED') {
       throw error;
     }
-
-    const deniedMessages = [
-      ...firstPassMessages,
-      {
-        role: 'assistant',
-        content: firstPassResponse,
-      },
-      {
-        role: 'system',
-        content: 'Tool call denied: insufficient tool intent for this user turn. Respond helpfully without using tools.',
-      },
-    ];
-
-    const deniedText = await requestChatCompletion({
-      modelSettings,
-      messages: deniedMessages,
-    });
+    const deniedText = 'I couldn’t use that tool for this request. Please rephrase or ask a little more specifically.';
     logToolDebug('tool-denial-fallback-response', {
       text: deniedText,
+      direct: true,
     });
 
     return {
       text: deniedText,
+      toolStatePatch: null,
       debug: {
         toolAttempted: true,
         toolExecuted: false,
@@ -333,6 +392,7 @@ async function generateChatReply({ modelSettings, memorySettings, chatMessages, 
 
     return {
       text: renderedText,
+      toolStatePatch: execution.result?.sessionStatePatch ?? null,
       debug: {
         toolAttempted: true,
         toolExecuted: true,
@@ -354,6 +414,7 @@ async function generateChatReply({ modelSettings, memorySettings, chatMessages, 
 
   return {
     text: finalText,
+    toolStatePatch: execution.result?.sessionStatePatch ?? null,
     debug: {
       toolAttempted: true,
       toolExecuted: true,

@@ -47,6 +47,14 @@ const TOOL_REGISTRY = {
     defaultName: 'Monitoring',
     defaultDescription: 'Inspect incidents, logs, and service health snapshots.',
   },
+  'todo-manager': {
+    toolKey: 'todo-manager',
+    aliases: ['todo_manager', 'todos', 'todo'],
+    uiId: 'todo-manager',
+    serviceKey: 'todo-manager',
+    defaultName: 'ToDo Manager',
+    defaultDescription: 'Create and update personal todos from chat.',
+  },
 };
 
 function normalizeToolToken(value) {

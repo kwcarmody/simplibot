@@ -1,7 +1,7 @@
 const { buildChatMessages } = require('../../prompts/chat');
 
-function buildMessages({ memorySettings, chatMessages, now }) {
-  return buildChatMessages({ memorySettings, chatMessages, tools: [], now });
+function buildMessages({ memorySettings, chatMessages, conversationContext = {}, now }) {
+  return buildChatMessages({ memorySettings, chatMessages, tools: [], conversationContext, now });
 }
 
 function parseAssistantResponse(content) {

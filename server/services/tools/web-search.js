@@ -103,9 +103,10 @@ function hasStrongSearchIntent(value) {
     /\b(current|latest|recent|today|upcoming|near me|nearby)\b/,
     /\b(events?|concerts?|shows?|performances?|things to do)\b/,
     /\b(weather|news|price|prices|availability|schedule|hours)\b/,
-    /\b(what are|what's|what is|where can i|which are|show me)\b/,
-    /\b(restaurants?|hotels?|flights?|music|classical music)\b/,
+    /\b(what are|what's|what is|where can i|which are|show me|how much|how many|how big|how tall|how long|how heavy)\b/,
+    /\b(restaurants?|hotels?|flights?|music|classical music|llms?|models?|weight|size|length|height|lifespan)\b/,
     /\b(who is|tell me about|information about|background on|learn about)\b/,
+    /\b(open source|opensource|provided by|does .* provide)\b/,
   ];
 
   return searchIntentPatterns.some((pattern) => pattern.test(normalized));
@@ -165,6 +166,10 @@ function looksLikePersonName(query) {
 
 function looksLikeEventsQuery(query) {
   return /\b(events?|concerts?|shows?|performances?|happening|this week|this weekend|today)\b/i.test(String(query || ''));
+}
+
+function looksLikeHoursQuery(query) {
+  return /\b(open|closed|hours?)\b/i.test(String(query || ''));
 }
 
 function summarizeEvidence(text) {
@@ -347,6 +352,39 @@ function formatEventsAnswer({ query, groundedFacts }) {
   ].join('\n');
 }
 
+function formatHoursAnswer({ query, groundedFacts }) {
+  if (!groundedFacts.length) {
+    return `I couldn't confidently confirm the hours for "${query}" from the available search results.`;
+  }
+
+  const strongest = groundedFacts[0];
+  const evidence = shortenEvidence(strongest.evidence || '');
+  const closedMatch = evidence.match(/\bSun\s*-\s*Closed\b/i) || evidence.match(/\bclosed\b/i);
+  const openMatch = evidence.match(/\b(\w{3}\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm))\b/i);
+
+  const lines = [];
+  if (closedMatch) {
+    lines.push(`Based on the strongest result I found, it appears "${query}" is closed.`);
+  } else if (openMatch) {
+    lines.push(`Based on the strongest result I found, "${query}" appears to be open with listed hours.`);
+  } else {
+    lines.push(`Here is the strongest hours-related result I found for "${query}":`);
+  }
+
+  lines.push(`- ${strongest.title}`);
+  if (evidence) {
+    lines.push(`  ${evidence}`);
+  }
+  if (strongest.source) {
+    lines.push(`  Source: ${strongest.source}`);
+  }
+  if (strongest.url) {
+    lines.push(`  Link: ${strongest.url}`);
+  }
+
+  return lines.join('\n');
+}
+
 function formatGenericAnswer({ query, groundedFacts }) {
   if (!groundedFacts.length) {
     return `I couldn't find strong enough search results to answer "${query}" confidently. If you want, I can try a narrower query.`;
@@ -383,6 +421,10 @@ function formatResultForAssistant({ result, latestUserMessage = '' }) {
 
   if (looksLikeEventsQuery(latestUserMessage) || looksLikeEventsQuery(query)) {
     return formatEventsAnswer({ query, groundedFacts: grounded.groundedFacts });
+  }
+
+  if (looksLikeHoursQuery(latestUserMessage) || looksLikeHoursQuery(query)) {
+    return formatHoursAnswer({ query, groundedFacts: grounded.groundedFacts });
   }
 
   return formatGenericAnswer({ query, groundedFacts: grounded.groundedFacts });
