@@ -361,8 +361,9 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
     };
   }
 
+  const effectiveTools = extras.tools || state.tools;
   const effectiveTodos = extras.todos || state.todos;
-  const stats = computeStats({ ...state, todos: effectiveTodos });
+  const stats = computeStats({ ...state, tools: effectiveTools, todos: effectiveTodos });
   const selectedTodo = extras.selectedTodo || effectiveTodos.find((item) => item.id === query.todo) || null;
   const toolSearch = String(query.toolSearch || "");
   const reportSearch = String(query.reportSearch || "");
@@ -370,7 +371,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
   const todoStatus = String(query.todoStatus || "ToDo");
   const selectedTool = String(query.selectedTool || toolOptions[0]);
 
-  const visibleTools = state.tools.filter((tool) =>
+  const visibleTools = effectiveTools.filter((tool) =>
     [tool.title, tool.description].some((value) => value.toLowerCase().includes(normalizeString(toolSearch)))
   );
   const visibleReports = state.reports.filter((report) =>
@@ -400,7 +401,7 @@ function getViewModel(route, query = {}, auth = null, extras = {}) {
     settings: state.settings,
     actions,
     chatMessages: extras.chatMessages || state.chatMessages,
-    tools: state.tools,
+    tools: effectiveTools,
     visibleTools,
     reports: state.reports,
     visibleReports,

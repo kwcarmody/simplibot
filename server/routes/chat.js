@@ -2,6 +2,7 @@ const express = require('express');
 const { ensureChatSession, formatChatTimestamp, getSessionSettings } = require('../lib/session');
 const { validateConfiguredChatModel } = require('../lib/validation');
 const { generateChatReply } = require('../services/model');
+const { loadToolsForTenantUser } = require('../tools/loader');
 
 function createChatRouter() {
   const router = express.Router();
@@ -36,17 +37,33 @@ function createChatRouter() {
     chatState.messages.push(userMessage);
 
     try {
-      const assistantText = await generateChatReply({ modelSettings, memorySettings, chatMessages: chatState.messages });
+      const tools = await loadToolsForTenantUser({
+        authToken: req.session.auth.token,
+        tenantId: req.session.tenant.id,
+        userId: req.session.auth.user.id,
+      });
+      const assistantResult = await generateChatReply({
+        modelSettings,
+        memorySettings,
+        chatMessages: chatState.messages,
+        tools,
+      });
       const assistantMessage = {
         id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         role: 'assistant',
         author: memorySettings.botName || 'Pikori',
-        text: assistantText,
+        text: assistantResult.text,
         time: formatChatTimestamp(),
       };
 
       chatState.messages.push(assistantMessage);
-      return res.json({ ok: true, userMessage, assistantMessage, chatMessages: chatState.messages });
+      return res.json({
+        ok: true,
+        userMessage,
+        assistantMessage,
+        chatMessages: chatState.messages,
+        debug: assistantResult.debug || null,
+      });
     } catch (error) {
       console.error(error);
       return res.status(502).json({ ok: false, error: 'The model could not respond right now.', chatMessages: chatState.messages });

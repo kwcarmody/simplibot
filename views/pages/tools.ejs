@@ -22,13 +22,21 @@
             <h2 class="h5 mb-1"><%= tool.title %></h2>
             <p class="tool-description mb-0"><%= tool.description %></p>
           </div>
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" />
-          </div>
+          <form class="form-check form-switch" method="post" action="/tools/preferences">
+            <input type="hidden" name="toolId" value="<%= tool.toolDefinitionId %>" />
+            <input type="hidden" name="toolSearch" value="<%= filters.toolSearch %>" />
+            <input type="hidden" name="enabled" value="<%= tool.enabled ? 'true' : 'false' %>" />
+            <input
+              class="form-check-input"
+              type="checkbox"
+              <%= tool.enabled ? 'checked' : '' %>
+              onchange="this.form.elements.enabled.value = this.checked ? 'true' : 'false'; this.form.submit();"
+            />
+          </form>
         </div>
         <div class="card-footer-row">
-          <div class="status-label-disabled">
-            Disabled
+          <div class="<%= tool.enabled ? 'status-label-enabled' : 'status-label-disabled' %>">
+            <%= tool.enabled ? 'Enabled' : 'Disabled' %>
           </div>
           <a class="tool-config-button" href="/tools?<%= new URLSearchParams({ toolSearch: filters.toolSearch, configureTool: tool.id }).toString() %>">
             <span>Configure</span>

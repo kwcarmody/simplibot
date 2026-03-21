@@ -54,6 +54,7 @@ function renderRoute(req, res, route) {
     settingsOverride: req.session.ui?.settings || null,
     docs: req.docsPage || null,
     tenant: req.session.tenant || null,
+    tools: req.toolsPage?.tools || null,
     todos: req.todosPage?.todos || null,
     selectedTodo: req.todosPage?.selectedTodo || null,
     isNewTodo: req.todosPage?.isNewTodo || false,

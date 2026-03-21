@@ -1,6 +1,7 @@
 const express = require('express');
 const { allRoutes, getFirstAuthorizedRoute, hasTenantSession, protectedRoutes, redirectToSafeEntry, renderNotFound, renderRoute, renderSignin, routeFeatureMap } = require('../lib/render');
 const { listTodosForTenant } = require('../services/todos');
+const { loadToolsForTenantUser } = require('../tools/loader');
 
 function createPageRouter() {
   const router = express.Router();
@@ -64,6 +65,21 @@ function createPageRouter() {
       } catch (error) {
         console.error(error);
         req.todosPage = { todos: [] };
+      }
+    }
+
+    if (route === 'tools') {
+      try {
+        req.toolsPage = {
+          tools: await loadToolsForTenantUser({
+            authToken: req.session.auth.token,
+            tenantId: req.session.tenant.id,
+            userId: req.session.auth.user.id,
+          }),
+        };
+      } catch (error) {
+        console.error(error);
+        req.toolsPage = { tools: [] };
       }
     }
 

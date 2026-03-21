@@ -1231,6 +1231,10 @@ html.sidebar-minimized .sidebar .sidebar-user {
   border: 0;
 }
 
+.message-text {
+  white-space: pre-wrap;
+}
+
 .message-row.user .message-bubble {
   background: rgba(126, 162, 255, 0.16);
 }

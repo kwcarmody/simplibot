@@ -593,7 +593,7 @@
                     <i class="uil uil-brain"></i>
                   </button>
                 </div>
-                <div>${escapeHtml(message.text)}</div>
+                <div class="message-text">${escapeHtml(message.text)}</div>
               </div>
             </div>
           `;
@@ -667,7 +667,7 @@
               .map((node) => ({
                 role: node.classList.contains("assistant") ? "assistant" : "user",
                 author: node.querySelector(".message-meta")?.textContent?.split(" • ")[0] || "",
-                text: node.querySelector(".message-bubble > div:last-child")?.textContent || "",
+                text: node.querySelector(".message-text")?.textContent || "",
                 time: node.querySelector(".message-meta")?.textContent?.split(" • ")[1] || "",
               }));
 

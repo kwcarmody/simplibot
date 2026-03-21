@@ -1,4 +1,43 @@
-const { buildChatMessages } = require('../prompts/chat');
+const { getModelAdapter } = require('./model-adapters');
+const { getModelDefinition } = require('./model-registry');
+const { getToolService } = require('./tools');
+
+const TOOL_DEBUG_ENABLED = String(process.env.PIKORI_TOOL_DEBUG || '').trim() === '1';
+const MODEL_REQUEST_TIMEOUT_MS = Number.parseInt(process.env.PIKORI_MODEL_TIMEOUT_MS || '45000', 10);
+
+function logToolDebug(event, payload = {}) {
+  if (!TOOL_DEBUG_ENABLED) {
+    return;
+  }
+
+  try {
+    console.log(`[pikori-tool-debug] ${event}`, JSON.stringify(payload, null, 2));
+  } catch (_error) {
+    console.log(`[pikori-tool-debug] ${event}`, payload);
+  }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = MODEL_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error(`Model request timed out after ${timeoutMs}ms.`);
+      timeoutError.code = 'MODEL_TIMEOUT';
+      throw timeoutError;
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function resolveChatEndpoint(endpoint) {
   const normalizedEndpoint = endpoint.replace(/\/+$/, '');
@@ -20,32 +59,14 @@ function buildModelHeaders({ provider, apiKey }) {
   return headers;
 }
 
-async function testModelConnection({ provider, model, endpoint, apiKey }) {
-  const response = await fetch(resolveChatEndpoint(endpoint), {
-    method: 'POST',
-    headers: buildModelHeaders({ provider, apiKey }),
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: 'Respond with OK' }],
-      stream: false,
-    }),
-  });
-
-  if (response.ok) return true;
-  if (response.status === 401 || response.status === 403) {
-    throw new Error(`Authentication rejected by model endpoint (${response.status}).`);
-  }
-  throw new Error(`Endpoint responded with ${response.status}.`);
-}
-
-async function generateChatReply({ modelSettings, memorySettings, chatMessages }) {
+async function requestChatCompletion({ modelSettings, messages }) {
   const payload = {
     model: modelSettings.model,
     stream: false,
-    messages: buildChatMessages({ memorySettings, chatMessages }),
+    messages,
   };
 
-  const response = await fetch(resolveChatEndpoint(modelSettings.endpoint), {
+  const response = await fetchWithTimeout(resolveChatEndpoint(modelSettings.endpoint), {
     method: 'POST',
     headers: buildModelHeaders({ provider: modelSettings.provider, apiKey: modelSettings.apiKey }),
     body: JSON.stringify(payload),
@@ -62,12 +83,290 @@ async function generateChatReply({ modelSettings, memorySettings, chatMessages }
     throw new Error('Model returned an empty response.');
   }
 
+  logToolDebug('model-response', {
+    model: modelSettings.model,
+    endpoint: resolveChatEndpoint(modelSettings.endpoint),
+    lastMessageRole: messages[messages.length - 1]?.role || '',
+    content,
+  });
+
   return String(content).trim();
+}
+
+function getEnabledPromptTools(tools = []) {
+  return tools
+    .filter((tool) => tool?.enabled)
+    .map((tool) => {
+      const service = getToolService(tool.serviceKey || tool.toolKey);
+      if (!service?.getPromptDefinition) {
+        return null;
+      }
+
+      return {
+        ...tool,
+        promptDefinition: service.getPromptDefinition({ tool }),
+      };
+    })
+    .filter(Boolean);
+}
+
+async function executeToolCall({ toolCall, tools = [], latestUserMessage = '' }) {
+  logToolDebug('tool-call-received', {
+    toolCall,
+    latestUserMessage,
+  });
+
+  const tool = tools.find((item) => item.toolKey === toolCall.tool);
+  if (!tool) {
+    throw new Error(`Tool "${toolCall.tool}" is not enabled.`);
+  }
+
+  if (!tool.autonomous) {
+    throw new Error(`Tool "${toolCall.tool}" requires confirmation before execution.`);
+  }
+
+  const service = getToolService(tool.serviceKey || tool.toolKey);
+  if (!service?.execute) {
+    throw new Error(`Tool "${tool.toolKey}" cannot be executed yet.`);
+  }
+
+  if (service.shouldAutoExecute && !service.shouldAutoExecute({
+    latestUserMessage,
+    input: toolCall.input || {},
+    tool,
+  })) {
+    logToolDebug('tool-call-denied', {
+      toolKey: tool.toolKey,
+      reason: 'policy',
+      latestUserMessage,
+      input: toolCall.input || {},
+    });
+    const denialError = new Error(`Tool "${tool.toolKey}" was denied by execution policy.`);
+    denialError.code = 'TOOL_EXECUTION_DENIED';
+    throw denialError;
+  }
+
+  logToolDebug('tool-call-executing', {
+    toolKey: tool.toolKey,
+    input: toolCall.input || {},
+    latestUserMessage,
+  });
+
+  const result = await service.execute({
+    input: toolCall.input || {},
+    config: tool.config || {},
+  });
+
+  logToolDebug('tool-call-result', {
+    toolKey: tool.toolKey,
+    result,
+  });
+
+  return {
+    tool,
+    result,
+    service,
+  };
+}
+
+async function testModelConnection({ provider, model, endpoint, apiKey }) {
+  const response = await fetchWithTimeout(resolveChatEndpoint(endpoint), {
+    method: 'POST',
+    headers: buildModelHeaders({ provider, apiKey }),
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: 'Respond with OK' }],
+      stream: false,
+    }),
+  });
+
+  if (response.ok) return true;
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(`Authentication rejected by model endpoint (${response.status}).`);
+  }
+  throw new Error(`Endpoint responded with ${response.status}.`);
+}
+
+function buildToolResultFollowupPrompt(toolKey) {
+  if (toolKey === 'web-search') {
+    return [
+      'Use the grounded evidence above to answer the original user request.',
+      'Answer only from the grounded_facts data.',
+      'Do not use any raw search result text outside grounded_facts.',
+      'Do not invent events, dates, venues, names, or sources that are not explicitly present in grounded_facts.',
+      'Only state an event or fact if a grounded_facts item clearly supports it.',
+      'If grounded_facts is empty or weak, say you could not confidently confirm the answer from the search results.',
+      'Keep the answer factual, restrained, and concise.',
+      'When presenting multiple grounded items, format the answer as a short intro followed by a bullet list with one item per line.',
+      'Each bullet must be directly grounded in one grounded_facts item and should include only the title plus a short supporting detail from its evidence field.',
+      'When possible, include the source hostname or URL inline for each bullet.',
+      'Do not summarize from general world knowledge; stay grounded in the provided evidence object.',
+      'If the evidence is insufficient, say so plainly and end with one concise follow-up suggestion or clarifying question.',
+      'Do not claim certainty when the retrieved evidence is incomplete.',
+      'Do not emit a tool call.',
+    ].join(' ');
+  }
+
+  return 'Use the tool result above to answer my last request. Do not emit a tool call.';
+}
+
+async function generateChatReply({ modelSettings, memorySettings, chatMessages, tools = [] }) {
+  const modelDefinition = getModelDefinition(modelSettings.model);
+  const adapter = getModelAdapter(modelDefinition?.adapterKey || 'default');
+  const promptTools = getEnabledPromptTools(tools).map((tool) => tool.promptDefinition);
+  const now = new Date();
+
+  const latestUserMessage = [...chatMessages].reverse().find((message) => message.role === 'user')?.text || '';
+  const firstPassMessages = adapter.buildMessages({
+    memorySettings,
+    chatMessages,
+    tools: promptTools,
+    now,
+  });
+  logToolDebug('first-pass-request', {
+    model: modelSettings.model,
+    adapter: modelDefinition?.adapterKey || 'default',
+    latestUserMessage,
+    enabledTools: promptTools.map((tool) => tool.toolKey),
+    messageCount: firstPassMessages.length,
+  });
+  const firstPassResponse = await requestChatCompletion({
+    modelSettings,
+    messages: firstPassMessages,
+  });
+  const parsedResponse = adapter.parseAssistantResponse(firstPassResponse);
+  logToolDebug('first-pass-parsed', {
+    parsedResponse,
+  });
+
+  if (parsedResponse.type !== 'tool_call') {
+    return {
+      text: parsedResponse.text,
+      debug: {
+        toolAttempted: false,
+        toolExecuted: false,
+        adapter: modelDefinition?.adapterKey || 'default',
+      },
+    };
+  }
+
+  let execution;
+
+  try {
+    execution = await executeToolCall({
+      toolCall: parsedResponse,
+      tools,
+      latestUserMessage,
+    });
+  } catch (error) {
+    if (error?.code !== 'TOOL_EXECUTION_DENIED') {
+      throw error;
+    }
+
+    const deniedMessages = [
+      ...firstPassMessages,
+      {
+        role: 'assistant',
+        content: firstPassResponse,
+      },
+      {
+        role: 'system',
+        content: 'Tool call denied: insufficient tool intent for this user turn. Respond helpfully without using tools.',
+      },
+    ];
+
+    const deniedText = await requestChatCompletion({
+      modelSettings,
+      messages: deniedMessages,
+    });
+    logToolDebug('tool-denial-fallback-response', {
+      text: deniedText,
+    });
+
+    return {
+      text: deniedText,
+      debug: {
+        toolAttempted: true,
+        toolExecuted: false,
+        deniedTool: parsedResponse.tool,
+        adapter: modelDefinition?.adapterKey || 'default',
+      },
+    };
+  }
+
+  const finalMessages = [
+    ...firstPassMessages,
+    {
+      role: 'assistant',
+      content: firstPassResponse,
+    },
+    {
+      role: 'system',
+      content: `Original user request: ${latestUserMessage}`,
+    },
+    {
+      role: 'system',
+      content: `Grounded tool result for ${execution.tool.toolKey}: ${JSON.stringify(
+        execution.service?.buildGroundedResult
+          ? execution.service.buildGroundedResult({
+              result: execution.result,
+              latestUserMessage,
+            })
+          : execution.result
+      )}`,
+    },
+    {
+      role: 'user',
+      content: buildToolResultFollowupPrompt(execution.tool.toolKey),
+    },
+  ];
+
+  if (execution.service?.formatResultForAssistant) {
+    const renderedText = execution.service.formatResultForAssistant({
+      result: execution.result,
+      latestUserMessage,
+    });
+    logToolDebug('tool-service-rendered-response', {
+      toolKey: execution.tool.toolKey,
+      text: renderedText,
+    });
+
+    return {
+      text: renderedText,
+      debug: {
+        toolAttempted: true,
+        toolExecuted: true,
+        toolKey: execution.tool.toolKey,
+        adapter: modelDefinition?.adapterKey || 'default',
+        renderedBy: 'tool-service',
+      },
+    };
+  }
+
+  const finalText = await requestChatCompletion({
+    modelSettings,
+    messages: finalMessages,
+  });
+  logToolDebug('second-pass-final-response', {
+    toolKey: execution.tool.toolKey,
+    text: finalText,
+  });
+
+  return {
+    text: finalText,
+    debug: {
+      toolAttempted: true,
+      toolExecuted: true,
+      toolKey: execution.tool.toolKey,
+      adapter: modelDefinition?.adapterKey || 'default',
+    },
+  };
 }
 
 module.exports = {
   buildModelHeaders,
   generateChatReply,
+  requestChatCompletion,
   resolveChatEndpoint,
   testModelConnection,
 };
