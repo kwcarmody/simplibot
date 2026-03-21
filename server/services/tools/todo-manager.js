@@ -467,11 +467,15 @@ function parseLookupAction({ latestUserMessage, input = {} }) {
   const detailType = normalizeText(input.detailType).toLowerCase();
   const reference = parseTaskReference(latestUserMessage, input.todoTitle, input.todoId);
   const text = String(latestUserMessage || '').toLowerCase();
+  const inputStatus = normalizeStatus(input.status || '');
+  const inputDueDateText = normalizeText(input.dueDateText || '');
 
   if (detailType) {
     return {
       ...reference,
       detailType,
+      status: inputStatus,
+      dueDateText: inputDueDateText,
     };
   }
 
@@ -499,6 +503,8 @@ function parseLookupAction({ latestUserMessage, input = {} }) {
   return {
     ...reference,
     detailType: 'summary',
+    status: inputStatus,
+    dueDateText: inputDueDateText,
   };
 }
 
@@ -525,6 +531,8 @@ function extractRequestedStatus(text) {
 function looksLikeTodoListQuery(text) {
   const normalized = String(text || '').toLowerCase();
   return [
+    /\bwhat\b.*\b(tasks|todos)\b/,
+    /\bwhich\b.*\b(tasks|todos)\b/,
     /\bdo i have any\b.*\b(tasks|todos)\b/,
     /\bdo (?:i )?have any\b.*\b(tasks|todos)\b/,
     /\bdo (?:i )?have\b.*\b(tasks|todos)\b/,
@@ -810,13 +818,13 @@ async function listTodosForLookup({ parsed, context }) {
     matches = matches.filter((todo) => todo.status === requestedStatus);
   }
 
-  if (/\bdue\b/.test(String(searchText).toLowerCase())) {
+  if (/\bdue\b/.test(String(searchText).toLowerCase()) || /\b(today|tomorrow|next\s+\w+)\b/i.test(parsed.dueDateText || '')) {
     matches = matches.filter((todo) => todo.rawDueDate);
   }
 
-  if (/\btoday\b|\btomorrow\b/.test(String(searchText).toLowerCase())) {
+  if (/\btoday\b|\btomorrow\b/.test(String(searchText).toLowerCase()) || /\btoday\b|\btomorrow\b/i.test(parsed.dueDateText || '')) {
     const baseDate = new Date();
-    if (/\btomorrow\b/.test(String(searchText).toLowerCase())) {
+    if (/\btomorrow\b/.test(String(searchText).toLowerCase()) || /\btomorrow\b/i.test(parsed.dueDateText || '')) {
       baseDate.setDate(baseDate.getDate() + 1);
     }
 
@@ -943,7 +951,10 @@ async function getTodoDetailsAction({ latestUserMessage, input, context }) {
     parsed.status = context.pendingTodoQuery.status || '';
   }
 
-  if (looksLikeTodoListQuery(latestUserMessage)) {
+  const shouldList = looksLikeTodoListQuery(latestUserMessage)
+    || (!parsed.todoId && !parsed.todoTitle && (parsed.status || parsed.dueDateText));
+
+  if (shouldList) {
     const matches = await listTodosForLookup({ parsed, context });
     const requestedStatus = normalizeStatus(parsed.status || '') || extractRequestedStatus(parsed.searchText || latestUserMessage) || 'ToDo';
 
