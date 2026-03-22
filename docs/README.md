@@ -18,6 +18,8 @@ This directory documents the current Node.js + Express + EJS implementation of P
   Tenant-scoped tool loading, user tool preferences, ToDo persistence, and the chat-facing `todo-manager` flow.
 - `extension-guide.md`
   Recommended patterns for adding features, pages, settings, tools, channels, and more persistence.
+- `testing.md`
+  Test strategy, how to run the suite, what each test file covers, and current gaps.
 
 ## Current App Shape
 
@@ -64,3 +66,4 @@ That code is no longer the primary runtime. The active app is the Express + EJS 
 The active app now exposes documentation inside the UI at `/docs` with per-document routes under `/docs/:slug`.
 
 Access to the docs UI is itself feature-gated through the `docs` authorization flag.
+through the `docs` authorization flag.

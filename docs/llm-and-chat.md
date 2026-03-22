@@ -56,6 +56,126 @@ Responsibilities:
 - clear `req.session.chat.messages`
 - clear pending ToDo follow-up state stored in session
 
+## Visual Chat Flow
+
+### End-to-End Chat Processing
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Chat UI
+    participant R as /chat/send route
+    participant L as Tool Loader
+    participant M as model.js facade
+    participant O as chat-orchestrator
+    participant T as transport.js
+    participant S as Tool Service
+    participant P as LLM Provider
+
+    U->>UI: Submit prompt
+    UI->>R: POST /chat/send
+    R->>L: loadToolsForTenantUser(...)
+    R->>M: generateChatReply(...)
+    M->>O: delegate request
+
+    alt Direct tool path
+        O->>S: shouldDirectHandle / execute
+        S-->>O: formatted result
+    else Task planner path
+        O->>T: planner model request
+        T->>P: HTTP chat request
+        P-->>T: planner response
+        O->>S: execute todo-manager
+        S-->>O: tool result
+    else Search planner path
+        O->>T: search planner request
+        T->>P: HTTP chat request
+        P-->>T: planner response
+        O->>S: execute web-search
+        S-->>O: grounded results
+        O->>T: synthesis request (optional)
+        T->>P: HTTP chat request
+        P-->>T: synthesized answer
+    else Default path
+        O->>T: first-pass model request
+        T->>P: HTTP chat request
+        P-->>T: assistant text or tool call
+    end
+
+    O-->>M: final assistant reply
+    M-->>R: reply + debug + toolStatePatch
+    R-->>UI: JSON response
+    UI-->>U: Render assistant message
+```
+
+### Model Subsystem Module Map
+
+```mermaid
+flowchart LR
+    Facade[model.js facade] --> Orch[chat-orchestrator.js]
+    Orch --> Transport[transport.js]
+    Orch --> Policies[policies/search-policy.js\npolicies/task-policy.js]
+    Orch --> Planners[planners/search-planner.js\nplanners/todo-planner.js]
+    Orch --> ToolExec[tool-execution.js]
+    Orch --> Confirm[tool-confirmation.js]
+    Orch --> Synth[synthesis/search-synthesis.js\nsynthesis/tool-followup.js]
+    Transport --> Extract[response-extraction.js]
+    Transport --> Adapters[adapters.js]
+```
+
+### Orchestrator Decision Tree
+
+```mermaid
+flowchart TD
+    A[generateChatReply] --> B{Direct tool can safely handle request?}
+    B -- yes --> C[tryDirectToolExecution]
+    C --> Z[Return formatted reply]
+
+    B -- no --> D{Looks like task flow\nor task follow-up?}
+    D -- yes --> E[handleTaskFlow]
+    E --> E1{todo tool definition available?}
+    E1 -- no --> F[Continue to next branch]
+    E1 -- yes --> E2[Run todo planner]
+    E2 --> E3{Planner returned tool call?}
+    E3 -- no --> Z
+    E3 -- yes --> E4{Suspicious phi task call?}
+    E4 -- yes --> Z
+    E4 -- no --> E5[Execute todo-manager]
+    E5 --> Z
+
+    D -- no --> G{Search policy says planner path?}
+    F --> G
+    G -- yes --> H[handleSearchFlow]
+    H --> H1{internal_meta?}
+    H1 -- yes --> Z
+    H1 -- no --> H2{known_static?}
+    H2 -- yes --> Z
+    H2 -- no --> H3[Run search planner]
+    H3 --> H4{Valid tool call after repair?}
+    H4 -- no --> Z
+    H4 -- yes --> H5[Execute web-search]
+    H5 --> H6{web-search result?}
+    H6 -- yes --> H7[Grounded synthesis / deterministic fallback]
+    H7 --> Z
+    H6 -- no --> Z
+
+    G -- no --> I[handleDefaultFlow]
+    I --> I1[Build first-pass model messages]
+    I1 --> I2[Request model response]
+    I2 --> I3{Non-tool response but needs task-call repair?}
+    I3 -- yes --> I4[Retry with repair prompt]
+    I4 --> I5
+    I3 -- no --> I5{Tool call?}
+    I5 -- no --> Z
+    I5 -- yes --> I6[Execute tool]
+    I6 --> I7{web-search?}
+    I7 -- yes --> H7
+    I7 -- no --> I8{Service formatter exists?}
+    I8 -- yes --> Z
+    I8 -- no --> I9[Second-pass follow-up model call]
+    I9 --> Z
+```
+
 ## Prompt Assembly
 
 Prompt construction happens in:
@@ -203,6 +323,15 @@ The server then logs events such as:
 - tool execution
 - search synthesis
 - tool denial fallbacks
+
+## Current Limitations
+
+- only a subset of registered tools have executable services today
+- chat history is still session-scoped, not durable across logout
+- local protected memories are still browser-local only
+- tool execution depends on correct tenant tool setup and user preferences in PocketBase
+- planner and orchestration flows now have targeted unit coverage, but there is still no authenticated end-to-end tool-flow test with real PocketBase-backed session state
+llbacks
 
 ## Current Limitations
 

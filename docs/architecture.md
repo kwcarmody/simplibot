@@ -29,7 +29,21 @@ The app is not a client-side SPA in the primary implementation.
 - `server/lib/session.js`
   Session mapping and chat session helpers.
 - `server/services/model.js`
-  Model transport, adapter selection, tool planning, and reply generation.
+  Public model-service facade that keeps the stable exports used by routes and delegates to the modular chat/model subsystem.
+- `server/services/model/chat-orchestrator.js`
+  Top-level chat workflow coordinator for task flows, search flows, and default model/tool execution paths.
+- `server/services/model/transport.js`
+  Model HTTP transport helpers, endpoint resolution, request payload submission, and connection checks.
+- `server/services/model/policies/*.js`
+  Search and task classification / policy helpers.
+- `server/services/model/planners/*.js`
+  Dedicated planner prompt builders and planner-pass execution for search and todo flows.
+- `server/services/model/synthesis/*.js`
+  Grounded tool follow-up and web-search synthesis helpers.
+- `server/services/model/tool-execution.js`
+  Generic enabled-tool mapping, direct execution checks, and tool invocation runtime.
+- `server/services/model/tool-confirmation.js`
+  Confirmation-required response builders for non-autonomous tools.
 - `server/services/todos.js`
   ToDo mapping, validation, time-zone conversion, and persistence helpers.
 - `server/services/tool-definitions.js`
@@ -48,6 +62,60 @@ The app is not a client-side SPA in the primary implementation.
   Shared UI fragments.
 - `css/styles.css`
   Shared styling.
+
+## Visual Architecture
+
+### High-Level Runtime Diagram
+
+```mermaid
+flowchart TD
+    Browser[Browser / Chat UI] --> Express[Express routes]
+    Express --> Session[Session state\nexpress-session]
+    Express --> PB[PocketBase]
+    Express --> ModelFacade[server/services/model.js\npublic facade]
+
+    ModelFacade --> Orchestrator[model/chat-orchestrator.js]
+    Orchestrator --> Policies[model/policies/*]
+    Orchestrator --> Planners[model/planners/*]
+    Orchestrator --> ToolExec[model/tool-execution.js]
+    Orchestrator --> Synthesis[model/synthesis/*]
+    Orchestrator --> Transport[model/transport.js]
+    Transport --> Provider[LLM provider endpoint]
+
+    ToolExec --> ToolServices[server/services/tools/*]
+    ToolServices --> PB
+    ToolServices --> External[External APIs / services]
+```
+
+### Chat Prompt Flow Diagram
+
+```mermaid
+flowchart TD
+    A[User submits chat prompt] --> B[POST /chat/send]
+    B --> C[Validate auth + message + model settings]
+    C --> D[Load effective tools for tenant/user]
+    D --> E[server/services/model.js]
+    E --> F[chat-orchestrator.generateChatReply]
+
+    F --> G{Direct tool handler?}
+    G -- yes --> H[tool-execution.tryDirectToolExecution]
+    H --> I[tool service execute/format]
+    I --> R[Assistant reply returned]
+
+    G -- no --> J{Task flow?}
+    J -- yes --> K[todo planner]
+    K --> L[execute todo-manager]
+    L --> R
+
+    J -- no --> M{Search flow?}
+    M -- yes --> N[search policy + planner]
+    N --> O[execute web-search]
+    O --> P[grounded synthesis or deterministic formatter]
+    P --> R
+
+    M -- no --> Q[default first-pass model/tool flow]
+    Q --> R
+```
 
 ## Request Flow
 

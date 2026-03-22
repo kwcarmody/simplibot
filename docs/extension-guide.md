@@ -37,18 +37,22 @@ Follow the current split:
 
 ## Adding A New Tool
 
-Current runtime pattern:
+For the detailed step-by-step version, see:
 
-1. Define or reuse a service in `server/services/tools/<tool>.js`.
-2. Register it in `server/services/tools/index.js`.
+- `docs/tools-and-todos.md` → **Adding A New Tool**
+
+Short version:
+
+1. Create `server/services/tools/<tool>.js`.
+2. Export it from `server/services/tools/index.js`.
 3. Add a registry entry in `server/tools/registry.js`.
-4. Ensure PocketBase has:
-   - a `tool_definitions` record
-   - a `tenant_tools` record for each tenant that should have it
-5. If it should appear in model prompts, implement `getPromptDefinition(...)`.
-6. If it can run automatically, implement `shouldAutoExecute(...)`.
-7. If it can answer directly, optionally implement `shouldDirectHandle(...)`.
-8. If it should return deterministic text, implement `formatResultForAssistant(...)`.
+4. Add matching PocketBase `tool_definitions` and `tenant_tools` records.
+5. Decide whether the tool uses:
+   - default tool flow
+   - direct execution
+   - or a dedicated planner/orchestrator path
+6. Add tests for the service plus any planner/policy/orchestrator behavior.
+7. Update docs so the runtime shape stays understandable.
 
 Important note:
 

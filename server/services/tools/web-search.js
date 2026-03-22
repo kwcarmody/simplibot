@@ -120,6 +120,31 @@ const CURRENTNESS_PATTERNS = [
   /\bupcoming\b/i,
 ];
 
+const LIVE_COMMERCE_PATTERNS = [
+  /\bprice\b/i,
+  /\bprices\b/i,
+  /\bpricing\b/i,
+  /\bcost\b/i,
+  /\bbuy\b/i,
+  /\bshop\b/i,
+  /\bfor sale\b/i,
+  /\bavailability\b/i,
+  /\bin stock\b/i,
+  /\bdeal\b/i,
+  /\bdeals\b/i,
+];
+
+const LIVE_HOURS_PATTERNS = [
+  /\bhours?\b/i,
+  /\bopen now\b/i,
+  /\bopen today\b/i,
+  /\bcurrently open\b/i,
+  /\bclosed\b/i,
+  /\bclosing\b/i,
+  /\bwhen does .* open\b/i,
+  /\bwhen does .* close\b/i,
+];
+
 function looksLikeInternalMetaQuery(value) {
   const normalized = normalizeIntentText(value);
   if (!normalized) {
@@ -140,6 +165,14 @@ function looksLikeEncyclopedicFactQuery(value) {
   }
 
   if (looksLikeInternalMetaQuery(normalized) || isGreetingOnly(normalized) || isPersonalOrMetaQuestion(normalized)) {
+    return false;
+  }
+
+  if (CURRENTNESS_PATTERNS.some((pattern) => pattern.test(normalized)) && (LIVE_COMMERCE_PATTERNS.some((pattern) => pattern.test(normalized)) || LIVE_HOURS_PATTERNS.some((pattern) => pattern.test(normalized)))) {
+    return false;
+  }
+
+  if (/^search$/i.test(normalized) || /^look up$/i.test(normalized) || /^lookup$/i.test(normalized)) {
     return false;
   }
 
@@ -205,6 +238,8 @@ function looksLikeRegionalLiveQuery(value) {
     /\bavailability\b/i,
     /\bhappening\b/i,
     /\bthings to do\b/i,
+    /\bmuseum\b/i,
+    /\bvenue\b/i,
   ];
   const locationSignals = [
     /\bin [a-z]/i,
@@ -215,14 +250,26 @@ function looksLikeRegionalLiveQuery(value) {
   const hasTimeOrLocalSignal = timeOrLocalSignals.some((pattern) => pattern.test(normalized));
   const hasLiveInfoSignal = liveInfoSignals.some((pattern) => pattern.test(normalized));
   const hasLocationSignal = locationSignals.some((pattern) => pattern.test(normalized));
+  const asksAboutHours = LIVE_HOURS_PATTERNS.some((pattern) => pattern.test(normalized));
 
-  return (hasLiveInfoSignal && (hasTimeOrLocalSignal || hasLocationSignal)) || (hasTimeOrLocalSignal && hasLocationSignal);
+  return asksAboutHours || (hasLiveInfoSignal && (hasTimeOrLocalSignal || hasLocationSignal)) || (hasTimeOrLocalSignal && hasLocationSignal);
 }
 
 function classifySearchIntent({ latestUserMessage = '', query = '' }) {
   const basis = String(latestUserMessage || query || '').trim();
+  const normalizedBasis = normalizeIntentText(basis);
 
   if (!basis) {
+    return {
+      mode: 'not_query',
+      strategy: 'not_query',
+      needsWebSearch: false,
+      shouldPlan: false,
+      label: 'not_query',
+    };
+  }
+
+  if (/^(search|lookup|look up|google it|search it)$/i.test(normalizedBasis)) {
     return {
       mode: 'not_query',
       strategy: 'not_query',
