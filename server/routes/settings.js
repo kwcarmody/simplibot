@@ -2,7 +2,7 @@ const express = require('express');
 const { createClient, listModelRecords, saveUserSettingsRecord } = require('../pocketbase');
 const { validateMemorySettings, validateModelSettings } = require('../lib/validation');
 const { testModelConnection } = require('../services/model');
-const { mapUserSettingsRecordToSettings } = require('../lib/session');
+const { invalidateModelSettingsCache, mapModelRecordToSessionSettings } = require('../services/model-settings-cache');
 
 function createSettingsRouter() {
   const router = express.Router();
@@ -39,17 +39,13 @@ function createSettingsRouter() {
       await saveUserSettingsRecord(client, req.session.auth.user.id, {
         model: selectedModel.id,
       });
+      invalidateModelSettingsCache(selectedModel.id);
 
       req.session.ui = {
         ...(req.session.ui || {}),
         settings: {
           ...((req.session.ui && req.session.ui.settings) || {}),
-          model: mapUserSettingsRecordToSettings({
-            model: selectedModel.id,
-            expand: {
-              model: selectedModel,
-            },
-          }).model,
+          model: mapModelRecordToSessionSettings(selectedModel),
         },
       };
 

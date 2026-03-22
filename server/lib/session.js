@@ -49,7 +49,9 @@ function mapUserSettingsRecordToSettings(record) {
       model: relatedModel?.modelId || record.modelName || '',
       modelName: relatedModel?.name || relatedModel?.modelId || record.modelName || '',
       endpoint: relatedModel?.baseUrl || record.modelEndpoint || '',
-      apiKey: relatedModel?.apiKey || record.modelApiToken || '',
+      // Keep provider secrets server-side only; the browser/session only gets
+      // non-secret model metadata.
+      apiKey: '',
       adapterKey: relatedModel?.adapterKey || '',
       apiType: relatedModel?.apiType || '',
       contextWindow: Number.isFinite(Number(relatedModel?.contextWindow)) ? Number(relatedModel.contextWindow) : 0,

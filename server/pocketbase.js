@@ -1,14 +1,14 @@
-const PocketBaseModule = require("pocketbase/cjs");
+const PocketBaseModule = require('pocketbase/cjs');
 
 const PocketBase = PocketBaseModule.default || PocketBaseModule;
 
-const PB_API_BASE = process.env.PB_API_BASE || "https://api.people.engineering";
-const PB_AUTH_COLLECTION = process.env.PB_AUTH_COLLECTION || "users";
-const PB_AUTHZ_COLLECTION = process.env.PB_AUTHZ_COLLECTION || "authorizations";
-const PB_USER_SETTINGS_COLLECTION = process.env.PB_USER_SETTINGS_COLLECTION || "user_settings";
-const PB_MODELS_COLLECTION = process.env.PB_MODELS_COLLECTION || "models";
-const PB_TENANTS_COLLECTION = process.env.PB_TENANTS_COLLECTION || "tenants";
-const PB_TENANT_MEMBERSHIPS_COLLECTION = process.env.PB_TENANT_MEMBERSHIPS_COLLECTION || "tenant_memberships";
+const PB_API_BASE = process.env.PB_API_BASE || 'https://api.people.engineering';
+const PB_AUTH_COLLECTION = process.env.PB_AUTH_COLLECTION || 'users';
+const PB_AUTHZ_COLLECTION = process.env.PB_AUTHZ_COLLECTION || 'authorizations';
+const PB_USER_SETTINGS_COLLECTION = process.env.PB_USER_SETTINGS_COLLECTION || 'user_settings';
+const PB_MODELS_COLLECTION = process.env.PB_MODELS_COLLECTION || 'models';
+const PB_TENANTS_COLLECTION = process.env.PB_TENANTS_COLLECTION || 'tenants';
+const PB_TENANT_MEMBERSHIPS_COLLECTION = process.env.PB_TENANT_MEMBERSHIPS_COLLECTION || 'tenant_memberships';
 
 const DEFAULT_FEATURES = {
   home: false,
@@ -61,6 +61,10 @@ async function listModelRecords(client) {
     sort: 'name,created',
   });
   return Array.isArray(records) ? records : [];
+}
+
+async function getModelRecordById(client, modelId) {
+  return client.collection(PB_MODELS_COLLECTION).getOne(modelId);
 }
 
 async function getTenantMembershipsForUser(client, userId) {
@@ -124,7 +128,7 @@ async function saveUserSettingsRecord(client, userId, payload) {
 }
 
 function normalizeFeatures(features) {
-  if (!features || typeof features !== "object") {
+  if (!features || typeof features !== 'object') {
     return { ...DEFAULT_FEATURES };
   }
 
@@ -138,7 +142,7 @@ function normalizeFeatures(features) {
 
 function maskToken(token) {
   if (!token) {
-    return "Not available";
+    return 'Not available';
   }
   if (token.length <= 12) {
     return `${token.slice(0, 4)}...`;
@@ -159,6 +163,7 @@ module.exports = {
   getAuthorizationRecord,
   getUserSettingsRecord,
   listModelRecords,
+  getModelRecordById,
   getTenantMembershipsForUser,
   getActiveTenantMembers,
   getUsersByIds,
