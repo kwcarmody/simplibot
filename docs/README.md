@@ -14,6 +14,8 @@ This directory documents the current Node.js + Express + EJS implementation of P
   The current application data model across session state, local storage, and PocketBase.
 - `llm-and-chat.md`
   How the chat feature works, how prompts are assembled, where model calls happen, and current payload structure.
+- `tools-and-todos.md`
+  Tenant-scoped tool loading, user tool preferences, ToDo persistence, and the chat-facing `todo-manager` flow.
 - `extension-guide.md`
   Recommended patterns for adding features, pages, settings, tools, channels, and more persistence.
 
@@ -26,11 +28,17 @@ Pikori currently runs as a server-rendered Express app:
 - `server/routes/*.js`
   Route modules for auth, settings, chat, and page rendering.
 - `server/services/model.js`
-  Model endpoint helpers and chat reply generation.
+  Model endpoint helpers, adapters, tool planning, and chat reply generation.
 - `server/prompts/chat.js`
   Chat system prompt and message assembly helpers.
 - `server/pocketbase.js`
-  PocketBase client helpers for auth, authorization, and `user_settings` persistence.
+  PocketBase client helpers for auth, authorization, tenant resolution, models, and `user_settings` persistence.
+- `server/services/tool-definitions.js`
+  PocketBase-backed tool definitions, tenant tool records, and per-user tool preferences.
+- `server/services/todos.js`
+  ToDo normalization, tenant-aware reads, date handling, and persistence helpers.
+- `server/tools/loader.js`
+  Combines tool definitions, tenant tools, and user preferences into the effective tool list for chat and the Tools page.
 - `server/data.js`
   Shared view-model builder and static/mock app data used by rendered pages.
 - `views/layout.ejs`
@@ -54,3 +62,5 @@ That code is no longer the primary runtime. The active app is the Express + EJS 
 ## In-App Docs Route
 
 The active app now exposes documentation inside the UI at `/docs` with per-document routes under `/docs/:slug`.
+
+Access to the docs UI is itself feature-gated through the `docs` authorization flag.

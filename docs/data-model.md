@@ -9,6 +9,8 @@ The app currently uses a mix of:
 - Express session state
 - browser local storage
 
+`server/data.js` is primarily a fallback/view-model source for shell content and placeholder UI. PocketBase and session state are the real source of truth for authenticated runtime behavior.
+
 ## PocketBase Collections
 
 ### `users`
@@ -18,7 +20,7 @@ PocketBase auth collection.
 Used for:
 
 - login identity
-- user id / email / name
+- user id, email, and name
 
 ### `authorizations`
 
@@ -32,23 +34,57 @@ Important fields:
 - `user` relation
 - `features` JSON
 - `apiBase`
-- `role`
+- optional `role`
 
-Example `features` shape:
+Important notes:
 
-```json
-{
-  "home": true,
-  "chat": true,
-  "tools": true,
-  "todos": true,
-  "reports": true,
-  "channels": true,
-  "settings": true,
-  "profile": true
-}
-```
+- `docs` is now part of the supported feature set
+- feature checks are enforced server-side before rendering protected pages
 
+### `models`
+
+Purpose:
+
+- selectable model catalog for the Settings page
+- adapter metadata used by chat generation
+
+Important fields used by the app:
+
+- `name`
+- `provider`
+- `modelId`
+- `baseUrl`
+- `apiKey`
+- `adapterKey`
+- `apiType`
+- `contextWindow`
+- `maxTokens`
+- `thinking`
+- `supportsTools`
+- optional `input`
+
+### `user_settings`
+
+Purpose:
+
+- durable user-specific settings
+
+Fields currently used by the app:
+
+- `user`
+- `model` relation
+- legacy/fallback model fields:
+  - `modelProvider`
+  - `modelName`
+  - `modelEndpoint`
+  - `modelApiToken`
+- memory fields:
+  - `memoryEnabled`
+  - `memoryMaxSize`
+  - `memoryUserName`
+  - `memoryUserDescription`
+  - `memoryBotName`
+  - `memoryBotDescription`
 
 ### `tenants`
 
@@ -62,6 +98,7 @@ Important fields:
 - `slug`
 - `owner` relation
 - `status`
+- `timeZone`
 
 ### `tenant_memberships`
 
@@ -77,27 +114,72 @@ Important fields:
 - `role`
 - `active`
 
-### `user_settings`
+### `tool_definitions`
 
 Purpose:
 
-- durable user-specific settings
+- global tool catalog metadata
 
-Currently used fields:
+Important fields used by the app:
+
+- `name`
+- `toolKey`
+- `description`
+- `sortOrder`
+- `autonomous`
+- `configSchema`
+
+### `tenant_tools`
+
+Purpose:
+
+- tenant-specific tool activation and config
+
+Important fields used by the app:
+
+- `tenant`
+- `tool`
+- `active`
+- `config`
+
+### `user_tool_preferences`
+
+Purpose:
+
+- per-user enabled/disabled state for tools within a tenant
+
+Important fields used by the app:
 
 - `user`
-- `modelProvider`
-- `modelName`
-- `modelEndpoint`
-- `modelApiToken`
-- `memoryEnabled`
-- `memoryMaxSize`
-- `memoryUserName`
-- `memoryUserDescription`
-- `memoryBotName`
-- `memoryBotDescription`
+- `tenant`
+- `tool`
+- `enabled`
+- optional `autonomous`
 
-More fields can be added over time for tools/channels/etc.
+### `todos`
+
+Purpose:
+
+- tenant-scoped personal task storage
+
+Important fields:
+
+- `tenant`
+- `title`
+- `status`
+- `dueDate` in UTC
+- `details`
+- `ownerType`
+- `ownerUser`
+- `ownerLabel`
+- `createdBy`
+
+Current app behavior:
+
+- the `/todos` page lists only `ownerType = "user"` todos for the signed-in user
+- create/update routes enforce tenant ownership
+- only the current user's own user-owned todos can be edited through the page flow
+- bot-owned todos are part of the schema, but are not the main `/todos` page path today
 
 ## Express Session Model
 
@@ -124,7 +206,6 @@ More fields can be added over time for tools/channels/etc.
 }
 ```
 
-
 ### `req.session.tenant`
 
 ```js
@@ -133,9 +214,18 @@ More fields can be added over time for tools/channels/etc.
   name,
   slug,
   status,
+  timeZone,
   role,
   membershipId,
-  ownerId
+  ownerId,
+  users: [
+    {
+      id,
+      name,
+      email,
+      role
+    }
+  ]
 }
 ```
 
@@ -151,10 +241,19 @@ Current shape:
 {
   settings: {
     model: {
+      selectedId,
       provider,
       model,
+      modelName,
       endpoint,
-      apiKey
+      apiKey,
+      adapterKey,
+      apiType,
+      contextWindow,
+      maxTokens,
+      thinking,
+      supportsTools,
+      input
     },
     memory: {
       enabled,
@@ -180,11 +279,13 @@ Current shape:
       text,
       time
     }
-  ]
+  ],
+  pendingTodoFollowup,
+  pendingTodoQuery
 }
 ```
 
-This persists only for the current login session.
+This is session-scoped and supports chat follow-up workflows for the ToDo manager.
 
 ## Local Storage
 
@@ -210,48 +311,21 @@ This is intentionally not persisted to PocketBase.
 This file provides static defaults and mock data for:
 
 - profile
-- settings
-- tool catalog
+- settings shell defaults
+- tool catalog placeholders
 - reports
 - channels
 - todos
 - navigation
 
-Important note:
-
-`server/data.js` is a fallback/default source, not the source of truth for authenticated persisted settings.
-
-
-### `todos`
-
-Purpose:
-
-- tenant-scoped shared task list
-
-Important fields:
-
-- `tenant` relation
-- `title`
-- `status`
-- `dueDate` (stored in UTC)
-- `details`
-- `ownerType`
-- `ownerUser`
-- `ownerLabel`
-- `createdBy`
-
-Current app behavior:
-
-- todos are read from PocketBase by active tenant id
-- due dates are displayed in America/New_York in the UI
-- priority is intentionally ignored in the first integration pass
-- new todos default to the current signed-in user as owner and creator
-- todo updates are blocked if the record belongs to a different tenant
+It should be treated as fallback or presentational data, not as the authoritative durable data model for authenticated features.
 
 ## Tenant-Aware Protected Flow
 
-Protected app routes should require both:
+Protected app routes require:
+
 - an authenticated user session
 - an active tenant session context
+- the relevant feature flag when the route is feature-gated
 
 The active tenant is resolved during sign-in and stored in `req.session.tenant`.
