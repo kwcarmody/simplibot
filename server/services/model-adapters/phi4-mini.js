@@ -44,8 +44,23 @@ function extractJsonObject(value) {
   return objectMatch ? objectMatch[0].trim() : '';
 }
 
+function stripTemplateLeakage(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const controlTokenIndex = trimmed.search(/<\|(?:system|user|assistant|end|tool|eot)[^|]*\|>/i);
+  if (controlTokenIndex <= 0) {
+    return trimmed;
+  }
+
+  return trimmed.slice(0, controlTokenIndex).trim();
+}
+
 function parseAssistantResponse(content) {
-  const text = String(content || '').trim();
+  const originalText = String(content || '').trim();
+  const text = stripTemplateLeakage(originalText);
   const jsonCandidate = extractJsonObject(text);
 
   if (jsonCandidate) {
@@ -66,7 +81,7 @@ function parseAssistantResponse(content) {
 
   return {
     type: 'final',
-    text,
+    text: text || originalText,
   };
 }
 

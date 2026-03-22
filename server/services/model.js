@@ -74,13 +74,14 @@ function resolveModelAdapterKey(modelSettings = {}) {
 }
 
 async function requestChatCompletion({ modelSettings, messages }) {
+  const adapterKey = resolveModelAdapterKey(modelSettings);
   const payload = {
     model: modelSettings.model,
     stream: false,
     messages,
   };
 
-  if (resolveModelAdapterKey(modelSettings) === 'default' && modelSettings.thinking) {
+  if (adapterKey === 'default' && modelSettings.thinking) {
     payload.think = true;
   }
 
@@ -96,8 +97,18 @@ async function requestChatCompletion({ modelSettings, messages }) {
     throw new Error(data?.error || data?.message || `Model request failed with ${response.status}.`);
   }
 
-  const content = data?.message?.content || data?.choices?.[0]?.message?.content || '';
+  const content = extractAssistantContent(data, adapterKey);
   if (!content) {
+    logToolDebug('model-empty-response', {
+      model: modelSettings.model,
+      endpoint: resolveChatEndpoint(modelSettings.endpoint, modelSettings.apiType),
+      adapter: adapterKey,
+      responseKeys: data && typeof data === 'object' ? Object.keys(data) : [],
+      choiceKeys: data?.choices?.[0] && typeof data.choices[0] === 'object' ? Object.keys(data.choices[0]) : [],
+      messageKeys: data?.choices?.[0]?.message && typeof data.choices[0].message === 'object'
+        ? Object.keys(data.choices[0].message)
+        : [],
+    });
     throw new Error('Model returned an empty response.');
   }
 
@@ -109,6 +120,53 @@ async function requestChatCompletion({ modelSettings, messages }) {
   });
 
   return String(content).trim();
+}
+
+function flattenContentValue(value) {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string') {
+          return item;
+        }
+
+        if (item && typeof item === 'object') {
+          return item.text || item.content || item.value || '';
+        }
+
+        return '';
+      })
+      .join('')
+      .trim();
+  }
+
+  if (value && typeof value === 'object') {
+    return String(value.text || value.content || value.value || '').trim();
+  }
+
+  return '';
+}
+
+function extractAssistantContent(data, adapterKey = 'default') {
+  const standardContent = flattenContentValue(data?.message?.content)
+    || flattenContentValue(data?.choices?.[0]?.message?.content);
+  if (standardContent) {
+    return standardContent;
+  }
+
+  if (adapterKey !== 'phi4-mini') {
+    return '';
+  }
+
+  return flattenContentValue(data?.choices?.[0]?.text)
+    || flattenContentValue(data?.response)
+    || flattenContentValue(data?.content)
+    || flattenContentValue(data?.output_text)
+    || flattenContentValue(data?.output?.[0]?.content);
 }
 
 function getEnabledPromptTools(tools = []) {
@@ -239,6 +297,103 @@ async function executeToolCall({ toolCall, tools = [], latestUserMessage = '', t
     result,
     service,
   };
+}
+
+function normalizeComparisonText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactComparisonText(value) {
+  return normalizeComparisonText(value).replace(/\s+/g, '');
+}
+
+function getSignificantTokens(value) {
+  const stopWords = new Set([
+    'a', 'an', 'and', 'archive', 'archived', 'at', 'by', 'create', 'delete', 'do', 'due', 'find', 'for',
+    'from', 'go', 'i', 'in', 'include', 'is', 'it', 'list', 'me', 'my', 'new', 'not', 'of', 'on', 'pm',
+    'query', 'remind', 'search', 'show', 'task', 'tasks', 'the', 'this', 'title', 'to', 'tomorrow', 'update',
+    'with',
+  ]);
+
+  return normalizeComparisonText(value)
+    .split(' ')
+    .filter((token) => token.length >= 3 && !stopWords.has(token));
+}
+
+function hasMeaningfulTokenOverlap(a, b) {
+  const aTokens = getSignificantTokens(a);
+  const bTokens = new Set(getSignificantTokens(b));
+  if (!aTokens.length || !bTokens.size) {
+    return false;
+  }
+
+  return aTokens.some((token) => bTokens.has(token));
+}
+
+function detectTaskIntentFlags(latestUserMessage = '') {
+  const normalized = normalizeComparisonText(latestUserMessage);
+  return {
+    create: /\b(add|create|make|new|remind)\b/.test(normalized),
+    update: /\b(update|change|edit|rename|mark|set)\b/.test(normalized),
+    archive: /\b(archive|delete|remove)\b/.test(normalized),
+    query: /\b(find|list|show|query|search)\b/.test(normalized),
+  };
+}
+
+function isSuspiciousPhiTaskToolCall({ toolCall, latestUserMessage = '' }) {
+  if (toolCall?.tool !== 'todo-manager') {
+    return false;
+  }
+
+  const operations = Array.isArray(toolCall.input?.operations) ? toolCall.input.operations : [];
+  if (!operations.length) {
+    return false;
+  }
+
+  const intentFlags = detectTaskIntentFlags(latestUserMessage);
+  const createOperations = operations.filter((operation) => String(operation?.action || '').trim() === 'create_task');
+
+  for (const operation of operations) {
+    const action = String(operation?.action || '').trim();
+    if (action === 'update_tasks' && !intentFlags.update) {
+      return true;
+    }
+    if (action === 'archive_tasks' && !intentFlags.archive) {
+      return true;
+    }
+    if (action === 'query_tasks' && !intentFlags.query) {
+      return true;
+    }
+  }
+
+  for (const operation of createOperations) {
+    const title = String(operation?.title || '').trim();
+    const dueDateText = String(operation?.dueDateText || '').trim();
+
+    if (title && !hasMeaningfulTokenOverlap(title, latestUserMessage)) {
+      return true;
+    }
+
+    if (dueDateText) {
+      const normalizedDueDate = normalizeComparisonText(dueDateText);
+      const normalizedLatestUserMessage = normalizeComparisonText(latestUserMessage);
+      const compactDueDate = compactComparisonText(dueDateText);
+      const compactLatestUserMessage = compactComparisonText(latestUserMessage);
+      if (
+        normalizedDueDate
+        && !normalizedLatestUserMessage.includes(normalizedDueDate)
+        && !compactLatestUserMessage.includes(compactDueDate)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 async function testModelConnection({ provider, model, endpoint, apiKey, apiType = '' }) {
@@ -736,6 +891,27 @@ async function generateChatReply({
       });
 
       if (plannedResponse.type === 'tool_call') {
+        if (adapterKey === 'phi4-mini' && isSuspiciousPhiTaskToolCall({
+          toolCall: plannedResponse,
+          latestUserMessage,
+        })) {
+          logToolDebug('phi4-task-tool-call-rejected', {
+            latestUserMessage,
+            toolCall: plannedResponse,
+          });
+          return {
+            text: 'I could not safely apply that task request because the model generated task details that did not match your latest message. Please try again.',
+            toolStatePatch: null,
+            debug: {
+              toolAttempted: true,
+              toolExecuted: false,
+              adapter: adapterKey,
+              renderedBy: 'task-planner',
+              reason: 'phi4_suspicious_task_tool_call',
+            },
+          };
+        }
+
         let plannedExecution;
 
         try {
