@@ -337,7 +337,7 @@
             modelId: hasModel ? option.dataset.modelId || "" : "",
             adapterKey: hasModel ? option.dataset.adapterKey || "" : "",
             endpoint: hasModel ? option.dataset.baseUrl || "" : "",
-            apiKey: hasModel ? option.dataset.apiKey || "" : "",
+            apiKey: hasModel && option.dataset.apiConfigured === "true" ? "Configured (hidden)" : "Not shown in UI",
             input: hasModel ? option.dataset.input || "" : "",
             apiType: hasModel ? option.dataset.apiType || "" : "",
             contextWindow: hasModel ? option.dataset.contextWindow || "0" : "0",
