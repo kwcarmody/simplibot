@@ -28,7 +28,7 @@
                   data-name="<%= item.name || '' %>"
                   data-adapter-key="<%= item.adapterKey || '' %>"
                   data-base-url="<%= item.baseUrl || '' %>"
-                  data-api-key="<%= item.apiKey || '' %>"
+                  data-api-configured="<%= item.apiKey ? 'true' : 'false' %>"
                   data-api-type="<%= item.apiType || '' %>"
                   data-context-window="<%= Number.isFinite(Number(item.contextWindow)) ? Number(item.contextWindow) : 0 %>"
                   data-max-tokens="<%= Number.isFinite(Number(item.maxTokens)) ? Number(item.maxTokens) : 0 %>"
@@ -288,5 +288,8 @@
         <button type="button" class="btn btn-danger-global" id="memory-delete-confirm">Yes</button>
       </div>
     </div>
+  </div>
+</div>
+ </div>
   </div>
 </div>

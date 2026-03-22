@@ -2,6 +2,7 @@ const express = require('express');
 const { ensureChatSession, formatChatTimestamp, getSessionSettings } = require('../lib/session');
 const { validateConfiguredChatModel } = require('../lib/validation');
 const { generateChatReply } = require('../services/model');
+const { resolveModelSettingsForRequest } = require('../services/model-settings-cache');
 const { loadToolsForTenantUser } = require('../tools/loader');
 
 function createChatRouter() {
@@ -18,8 +19,22 @@ function createChatRouter() {
     }
 
     const settings = getSessionSettings(req);
-    const modelSettings = settings.model || {};
+    const sessionModelSettings = settings.model || {};
     const memorySettings = settings.memory || {};
+
+    let modelSettings = sessionModelSettings;
+    if (sessionModelSettings.selectedId) {
+      try {
+        modelSettings = await resolveModelSettingsForRequest({
+          authToken: req.session.auth.token,
+          modelId: sessionModelSettings.selectedId,
+        }) || sessionModelSettings;
+      } catch (error) {
+        console.error(error);
+        return res.status(502).json({ ok: false, error: 'The selected model configuration could not be loaded.' });
+      }
+    }
+
     const modelValidationError = validateConfiguredChatModel(modelSettings);
     if (modelValidationError) {
       return res.status(400).json({ ok: false, error: modelValidationError });
