@@ -197,16 +197,35 @@ async function tryDirectToolExecution({ tools = [], latestUserMessage = '', tool
       continue;
     }
 
-    const execution = await executeToolCall({
-      toolCall: {
-        type: 'tool_call',
-        tool: tool.toolKey,
-        input: {},
-      },
-      tools,
-      latestUserMessage,
-      toolContext,
-    });
+    let execution;
+
+    try {
+      execution = await executeToolCall({
+        toolCall: {
+          type: 'tool_call',
+          tool: tool.toolKey,
+          input: {},
+        },
+        tools,
+        latestUserMessage,
+        toolContext,
+      });
+    } catch (error) {
+      if (error?.code === 'TOOL_CONFIRMATION_REQUIRED') {
+        return buildConfirmationRequiredResponse({
+          tool: error.tool || tool,
+          toolCall: error.toolCall || {
+            type: 'tool_call',
+            tool: tool.toolKey,
+            input: {},
+          },
+          adapterKey,
+          renderedBy: 'tool-service-direct',
+        });
+      }
+
+      throw error;
+    }
 
     const renderedText = execution.service?.formatResultForAssistant
       ? execution.service.formatResultForAssistant({
@@ -249,7 +268,11 @@ async function executeToolCall({ toolCall, tools = [], latestUserMessage = '', t
   }
 
   if (!tool.autonomous) {
-    throw new Error(`Tool "${toolCall.tool}" requires confirmation before execution.`);
+    const confirmationError = new Error(`Tool "${toolCall.tool}" requires confirmation before execution.`);
+    confirmationError.code = 'TOOL_CONFIRMATION_REQUIRED';
+    confirmationError.tool = tool;
+    confirmationError.toolCall = toolCall;
+    throw confirmationError;
   }
 
   const service = getToolService(tool.serviceKey || tool.toolKey);
@@ -296,6 +319,45 @@ async function executeToolCall({ toolCall, tools = [], latestUserMessage = '', t
     tool,
     result,
     service,
+  };
+}
+
+function getToolDisplayName(tool = {}, toolCall = {}) {
+  return String(tool.title || tool.name || tool.toolKey || toolCall.tool || 'This tool').trim();
+}
+
+function buildConfirmationRequiredText({ tool = {}, toolCall = {} }) {
+  const displayName = getToolDisplayName(tool, toolCall);
+
+  if (tool.toolKey === 'web-search') {
+    const query = String(toolCall?.input?.query || '').trim();
+    if (query) {
+      return `I’m ready to use ${displayName}, but it requires confirmation before I run it. Confirm and I’ll search for "${query}".`;
+    }
+  }
+
+  return `I’m ready to use ${displayName}, but it requires confirmation before I run it.`;
+}
+
+function buildConfirmationRequiredResponse({ tool = {}, toolCall = {}, adapterKey = 'default', renderedBy = 'tool-service' }) {
+  const text = buildConfirmationRequiredText({ tool, toolCall });
+  logToolDebug('tool-confirmation-required-response', {
+    toolKey: tool.toolKey || toolCall.tool,
+    text,
+    renderedBy,
+  });
+
+  return {
+    text,
+    toolStatePatch: null,
+    debug: {
+      toolAttempted: true,
+      toolExecuted: false,
+      confirmationRequired: true,
+      toolKey: tool.toolKey || toolCall.tool,
+      adapter: adapterKey,
+      renderedBy,
+    },
   };
 }
 
@@ -414,8 +476,9 @@ async function testModelConnection({ provider, model, endpoint, apiKey, apiType 
   throw new Error(`Endpoint responded with ${response.status}.`);
 }
 
-function buildToolResultFollowupPrompt(toolKey) {
+function buildToolResultFollowupPrompt(toolKey, options = {}) {
   if (toolKey === 'web-search') {
+    const searchMode = String(options.searchMode || 'general_web').trim();
     return [
       'Use the grounded evidence above to answer the original user request.',
       'Answer only from the grounded_facts data.',
@@ -424,7 +487,9 @@ function buildToolResultFollowupPrompt(toolKey) {
       'Only state an event or fact if a grounded_facts item clearly supports it.',
       'If grounded_facts is empty or weak, say you could not confidently confirm the answer from the search results.',
       'Keep the answer factual, restrained, and concise.',
-      'When presenting multiple grounded items, format the answer as a short intro followed by a bullet list with one item per line.',
+      searchMode === 'encyclopedic_fact'
+        ? 'For encyclopedic or fact lookups, prefer a short direct answer first, then cite one or two strongest sources.'
+        : 'When presenting multiple grounded items, format the answer as a short intro followed by a bullet list with one item per line.',
       'Each bullet must be directly grounded in one grounded_facts item and should include only the title plus a short supporting detail from its evidence field.',
       'When possible, include the source hostname or URL inline for each bullet.',
       'Do not summarize from general world knowledge; stay grounded in the provided evidence object.',
@@ -547,6 +612,81 @@ function isLikelyWebSearchRequest({ tools = [], latestUserMessage = '' }) {
   });
 }
 
+function getWebSearchIntent(latestUserMessage = '') {
+  const webSearchService = getToolService('web-search');
+  if (!webSearchService?.classifySearchIntent) {
+    return {
+      mode: 'general_web',
+      needsWebSearch: true,
+      label: 'general_web',
+    };
+  }
+
+  return webSearchService.classifySearchIntent({
+    latestUserMessage,
+    query: latestUserMessage,
+  });
+}
+
+function answerInternalSearchMetaQuestion(latestUserMessage = '') {
+  const normalized = String(latestUserMessage || '').toLowerCase();
+
+  if (/\bgrounded[_\s-]?facts?\b/.test(normalized)) {
+    return 'In this app, grounded facts are the reduced evidence snippets pulled from web search results. They are the specific titles, sources, links, and short evidence lines the assistant is supposed to rely on instead of freehand guessing.';
+  }
+
+  return '';
+}
+
+async function answerKnownStaticQuery({ modelSettings, memorySettings, latestUserMessage, now = new Date() }) {
+  const today = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'America/New_York',
+  }).format(now);
+
+  const messages = [
+    {
+      role: 'system',
+      content: [
+        `Your name is ${memorySettings.botName}.`,
+        `You are ${memorySettings.botDescription}`,
+        `Today's date is ${today}.`,
+        'Answer the user directly from stable background knowledge only.',
+        'Use this path only for facts that are unlikely to have changed recently, such as historical facts, definitions, or older background information.',
+        'Be concise and helpful.',
+        'End with one short sentence reminding the user to check the latest details if recency could matter.',
+        'Do not mention tools or web search.',
+      ].join(' '),
+    },
+    {
+      role: 'user',
+      content: latestUserMessage,
+    },
+  ];
+
+  const text = await requestChatCompletion({
+    modelSettings,
+    messages,
+  });
+
+  logToolDebug('known-static-response', {
+    latestUserMessage,
+    text,
+  });
+
+  return {
+    text,
+    debug: {
+      toolAttempted: false,
+      toolExecuted: false,
+      renderedBy: 'known-static',
+    },
+  };
+}
+
 function buildTaskPlannerMessages({ memorySettings, latestUserMessage, todoToolDefinition, chatMessages = [], now = new Date() }) {
   const today = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
@@ -627,7 +767,13 @@ async function planTodoManagerToolCall({ modelSettings, memorySettings, latestUs
   return parsedPlannerResponse;
 }
 
-function buildSearchPlannerMessages({ memorySettings, latestUserMessage, webSearchToolDefinition, now = new Date() }) {
+function buildSearchPlannerMessages({
+  memorySettings,
+  latestUserMessage,
+  webSearchToolDefinition,
+  searchIntent,
+  now = new Date(),
+}) {
   const today = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -644,6 +790,27 @@ function buildSearchPlannerMessages({ memorySettings, latestUserMessage, webSear
   const inputs = Array.isArray(webSearchToolDefinition?.inputs)
     ? webSearchToolDefinition.inputs.map((input) => `${input.key}${input.required ? ' (required)' : ''}: ${input.description}`).join('; ')
     : '';
+  const intentMode = String(searchIntent?.mode || 'general_web').trim();
+  const modeGuidance = {
+    encyclopedic_fact: [
+      'Intent mode: encyclopedic_fact.',
+      'This is a factual lookup or reference-style question.',
+      'Prefer concise reference-style queries.',
+      'For encyclopedic fact lookups, prefer official primary sources when available and Wikipedia-style reference sources when helpful.',
+      'For government officeholders or current officials, prefer official government sources over generic blogs.',
+      'When helpful, rewrite the query to include reference terms such as Wikipedia or official office names.',
+    ].join(' '),
+    regional_live: [
+      'Intent mode: regional_live.',
+      'This is a local, regional, or live-information request.',
+      'Prefer venue pages, city guides, local news, ticketing pages, event calendars, and other regional sources.',
+      'Preserve location, date, and timing constraints in the search query.',
+    ].join(' '),
+    general_web: [
+      'Intent mode: general_web.',
+      'Use a neutral web query that preserves the user intent and key constraints.',
+    ].join(' '),
+  };
 
   return [
     {
@@ -662,6 +829,7 @@ function buildSearchPlannerMessages({ memorySettings, latestUserMessage, webSear
         'For requests about people, organizations, events, touring, schedules, availability, current status, or anything the web could verify, use web-search instead of answering from memory.',
         'If web search is not needed, answer the user directly in one concise sentence and do not emit a tool call.',
         'Never claim that you searched the web, found results, confirmed facts, or checked sources unless you return a tool call and the tool is executed later.',
+        modeGuidance[intentMode] || modeGuidance.general_web,
         `web-search description: ${webSearchToolDefinition?.description || ''}`,
         inputs ? `web-search inputs: ${inputs}` : '',
       ].filter(Boolean).join(' '),
@@ -674,15 +842,18 @@ function buildSearchPlannerMessages({ memorySettings, latestUserMessage, webSear
 }
 
 async function planWebSearchToolCall({ modelSettings, memorySettings, latestUserMessage, webSearchToolDefinition, adapter, now }) {
+  const searchIntent = getWebSearchIntent(latestUserMessage);
   const plannerMessages = buildSearchPlannerMessages({
     memorySettings,
     latestUserMessage,
     webSearchToolDefinition,
+    searchIntent,
     now,
   });
   logToolDebug('search-planner-request', {
     model: modelSettings.model,
     latestUserMessage,
+    searchIntent,
     messageCount: plannerMessages.length,
   });
   const plannerResponse = await requestChatCompletion({
@@ -692,12 +863,16 @@ async function planWebSearchToolCall({ modelSettings, memorySettings, latestUser
   const parsedPlannerResponse = adapter.parseAssistantResponse(plannerResponse);
   logToolDebug('search-planner-response', {
     response: plannerResponse,
+    searchIntent,
     parsedResponse: parsedPlannerResponse,
   });
-  return parsedPlannerResponse;
+  return {
+    parsedResponse: parsedPlannerResponse,
+    searchIntent,
+  };
 }
 
-async function repairWebSearchToolCall({ modelSettings, latestUserMessage, adapter, plannerResponse }) {
+async function repairWebSearchToolCall({ modelSettings, latestUserMessage, adapter, plannerResponse, searchIntent }) {
   const retryMessages = [
     {
       role: 'system',
@@ -708,6 +883,10 @@ async function repairWebSearchToolCall({ modelSettings, latestUserMessage, adapt
         'Use the web-search tool.',
         'Use this exact outer shape:',
         '{"type":"tool_call","tool":"web-search","input":{"query":"..."}}',
+        `Search intent mode: ${String(searchIntent?.mode || 'general_web')}.`,
+        searchIntent?.mode === 'encyclopedic_fact'
+          ? 'Prefer an encyclopedic/reference-style query. Use official sources when possible and Wikipedia-style terms when helpful.'
+          : 'Preserve local, temporal, and regional constraints when present.',
         'Do not answer the question directly.',
         'Do not claim you searched, found results, or confirmed facts.',
         'Do not wrap the JSON in markdown.',
@@ -731,6 +910,7 @@ async function repairWebSearchToolCall({ modelSettings, latestUserMessage, adapt
   const parsedRetryResponse = adapter.parseAssistantResponse(retryResponse);
   logToolDebug('search-planner-retry', {
     originalResponse: plannerResponse,
+    searchIntent,
     retryResponse,
     parsedResponse: parsedRetryResponse,
   });
@@ -759,6 +939,7 @@ function buildSearchSynthesisMessages({
         `You are ${memorySettings.botDescription}`,
         `Today's date is ${today}.`,
         'You are in a dedicated search-synthesis pass.',
+        `Search intent mode: ${String(groundedResult?.searchMode || 'general_web')}.`,
         'Your job is to answer the user using only the grounded search evidence provided below.',
         'Do not invent facts, dates, names, prices, schedules, events, or sources.',
         'Do not use outside knowledge.',
@@ -774,13 +955,80 @@ function buildSearchSynthesisMessages({
     },
     {
       role: 'system',
-      content: `Grounded web search result: ${JSON.stringify(groundedResult)}`,
+      content: [
+        'Grounded web search result JSON:',
+        JSON.stringify(groundedResult),
+        '',
+        'Grounded facts:',
+        ...((Array.isArray(groundedResult?.groundedFacts) ? groundedResult.groundedFacts : []).map((fact, index) => [
+          `${index + 1}. ${fact.title || 'Result'}`,
+          fact.evidence ? `Evidence: ${fact.evidence}` : '',
+          fact.source ? `Source: ${fact.source}` : '',
+          fact.url ? `URL: ${fact.url}` : '',
+        ].filter(Boolean).join('\n'))),
+      ].join('\n'),
     },
     {
       role: 'user',
-      content: buildToolResultFollowupPrompt('web-search'),
+      content: `${buildToolResultFollowupPrompt('web-search', {
+        searchMode: groundedResult?.searchMode || 'general_web',
+      })} The grounded facts are included above. Do not ask the user to provide them again.`,
     },
   ];
+}
+
+function isSearchSynthesisFailureText(text = '') {
+  const normalized = String(text || '').trim().toLowerCase();
+
+  if (!normalized) {
+    return true;
+  }
+
+  const failurePatterns = [
+    /grounded[_\s-]?facts?.*(not available|missing|not included|not provided)/i,
+    /no grounded evidence/i,
+    /please provide.*grounded[_\s-]?facts?/i,
+    /please provide.*search results/i,
+    /could not answer.*because.*(not provided|missing)/i,
+    /cannot proceed because.*(not included|missing)/i,
+  ];
+
+  return failurePatterns.some((pattern) => pattern.test(normalized));
+}
+
+function isSearchSynthesisOffTopic({ text = '', groundedResult = {} }) {
+  const normalizedText = normalizeComparisonText(text);
+  if (!normalizedText) {
+    return true;
+  }
+
+  const query = String(groundedResult?.query || '').trim();
+  if (!query) {
+    return false;
+  }
+
+  const genericSearchWords = new Set([
+    'current', 'latest', 'recent', 'today', 'tonight', 'week', 'weekend', 'events', 'event',
+    'concert', 'concerts', 'festival', 'festivals', 'things', 'thing', 'happening', 'happens',
+    'what', 'whats', 'who', 'where', 'when', 'query', 'march', 'april', 'may', 'june', 'july',
+    'august', 'september', 'october', 'november', 'december', 'january', 'february',
+  ]);
+  const anchorTokens = getSignificantTokens(query).filter((token) => !genericSearchWords.has(token));
+
+  if (anchorTokens.length && anchorTokens.some((token) => normalizedText.includes(token))) {
+    return false;
+  }
+
+  const groundedFacts = Array.isArray(groundedResult?.groundedFacts) ? groundedResult.groundedFacts : [];
+  const factAnchorTokens = groundedFacts.slice(0, 3)
+    .flatMap((fact) => getSignificantTokens(`${fact?.title || ''} ${fact?.evidence || ''}`))
+    .filter((token) => !genericSearchWords.has(token));
+
+  if (factAnchorTokens.some((token) => normalizedText.includes(token))) {
+    return false;
+  }
+
+  return true;
 }
 
 async function synthesizeWebSearchResult({
@@ -796,6 +1044,33 @@ async function synthesizeWebSearchResult({
         latestUserMessage,
       })
     : execution.result;
+  const deterministicText = execution.service?.formatResultForAssistant
+    ? execution.service.formatResultForAssistant({
+        result: execution.result,
+        latestUserMessage,
+      })
+    : String(execution.result?.message || '').trim();
+
+  if (groundedResult?.searchMode === 'encyclopedic_fact') {
+    logToolDebug('search-synthesis-bypassed', {
+      toolKey: execution.tool.toolKey,
+      reason: 'encyclopedic_fact',
+      text: deterministicText,
+      groundedResult,
+    });
+
+    return {
+      text: deterministicText,
+      toolStatePatch: execution.result?.sessionStatePatch ?? null,
+      debug: {
+        toolAttempted: true,
+        toolExecuted: true,
+        toolKey: execution.tool.toolKey,
+        renderedBy: 'search-fact-formatter',
+      },
+    };
+  }
+
   const synthesisMessages = buildSearchSynthesisMessages({
     memorySettings,
     latestUserMessage,
@@ -807,6 +1082,21 @@ async function synthesizeWebSearchResult({
       modelSettings,
       messages: synthesisMessages,
     });
+
+    if (isSearchSynthesisFailureText(finalText)) {
+      const synthesisFailure = new Error('Search synthesis produced an unusable response.');
+      synthesisFailure.code = 'SEARCH_SYNTHESIS_UNUSABLE';
+      throw synthesisFailure;
+    }
+
+    if (groundedResult?.searchMode === 'regional_live' && isSearchSynthesisOffTopic({
+      text: finalText,
+      groundedResult,
+    })) {
+      const synthesisFailure = new Error('Search synthesis produced an off-topic response.');
+      synthesisFailure.code = 'SEARCH_SYNTHESIS_OFF_TOPIC';
+      throw synthesisFailure;
+    }
 
     logToolDebug('search-synthesis-response', {
       toolKey: execution.tool.toolKey,
@@ -825,22 +1115,15 @@ async function synthesizeWebSearchResult({
       },
     };
   } catch (error) {
-    const fallbackText = execution.service?.formatResultForAssistant
-      ? execution.service.formatResultForAssistant({
-          result: execution.result,
-          latestUserMessage,
-        })
-      : String(execution.result?.message || '').trim();
-
     logToolDebug('search-synthesis-fallback', {
       toolKey: execution.tool.toolKey,
       error: error?.message || String(error),
-      text: fallbackText,
+      text: deterministicText,
       groundedResult,
     });
 
     return {
-      text: fallbackText,
+      text: deterministicText,
       toolStatePatch: execution.result?.sessionStatePatch ?? null,
       debug: {
         toolAttempted: true,
@@ -922,6 +1205,15 @@ async function generateChatReply({
             toolContext,
           });
         } catch (error) {
+          if (error?.code === 'TOOL_CONFIRMATION_REQUIRED') {
+            return buildConfirmationRequiredResponse({
+              tool: error.tool || tools.find((item) => item.toolKey === plannedResponse.tool) || {},
+              toolCall: error.toolCall || plannedResponse,
+              adapterKey,
+              renderedBy: 'task-planner',
+            });
+          }
+
           if (error?.code !== 'TOOL_EXECUTION_DENIED') {
             throw error;
           }
@@ -976,10 +1268,47 @@ async function generateChatReply({
     }
   }
 
-  if (isLikelyWebSearchRequest({ tools, latestUserMessage })) {
+  const webSearchIntent = getWebSearchIntent(latestUserMessage);
+  const shouldUseQueryPlanner = tools.some((tool) => tool.toolKey === 'web-search' && tool.enabled)
+    && Boolean(webSearchIntent?.shouldPlan);
+
+  if (shouldUseQueryPlanner) {
+    if (webSearchIntent.mode === 'internal_meta') {
+      const localMetaAnswer = answerInternalSearchMetaQuestion(latestUserMessage);
+      if (localMetaAnswer) {
+        return {
+          text: localMetaAnswer,
+          debug: {
+            toolAttempted: false,
+            toolExecuted: false,
+            adapter: adapterKey,
+            renderedBy: 'search-intent-local',
+            searchIntent: webSearchIntent,
+          },
+        };
+      }
+    }
+
+    if (webSearchIntent.mode === 'known_static') {
+      const knownStaticResult = await answerKnownStaticQuery({
+        modelSettings,
+        memorySettings,
+        latestUserMessage,
+        now,
+      });
+      return {
+        ...knownStaticResult,
+        debug: {
+          ...knownStaticResult.debug,
+          adapter: adapterKey,
+          searchIntent: webSearchIntent,
+        },
+      };
+    }
+
     const webSearchToolDefinition = getWebSearchPromptDefinition(tools);
-    if (webSearchToolDefinition) {
-      const plannedResponse = await planWebSearchToolCall({
+    if (webSearchToolDefinition && webSearchIntent.needsWebSearch) {
+      const planningResult = await planWebSearchToolCall({
         modelSettings,
         memorySettings,
         latestUserMessage,
@@ -987,17 +1316,30 @@ async function generateChatReply({
         adapter,
         now,
       });
+      const plannedResponse = planningResult.parsedResponse;
+      const effectiveSearchIntent = planningResult.searchIntent || webSearchIntent;
 
       const effectivePlannedResponse = plannedResponse.type === 'tool_call'
-        ? plannedResponse
+        ? {
+            ...plannedResponse,
+            input: {
+              ...(plannedResponse.input || {}),
+              searchMode: effectiveSearchIntent.mode,
+            },
+          }
         : await repairWebSearchToolCall({
             modelSettings,
             latestUserMessage,
             adapter,
             plannerResponse: plannedResponse.text,
+            searchIntent: effectiveSearchIntent,
           });
 
       if (effectivePlannedResponse.type === 'tool_call') {
+        effectivePlannedResponse.input = {
+          ...(effectivePlannedResponse.input || {}),
+          searchMode: effectiveSearchIntent.mode,
+        };
         let plannedExecution;
 
         try {
@@ -1008,6 +1350,15 @@ async function generateChatReply({
             toolContext,
           });
         } catch (error) {
+          if (error?.code === 'TOOL_CONFIRMATION_REQUIRED') {
+            return buildConfirmationRequiredResponse({
+              tool: error.tool || tools.find((item) => item.toolKey === effectivePlannedResponse.tool) || {},
+              toolCall: error.toolCall || effectivePlannedResponse,
+              adapterKey,
+              renderedBy: 'search-planner',
+            });
+          }
+
           if (error?.code !== 'TOOL_EXECUTION_DENIED') {
             throw error;
           }
@@ -1021,6 +1372,7 @@ async function generateChatReply({
               deniedTool: effectivePlannedResponse.tool,
               adapter: adapterKey,
               renderedBy: 'search-planner',
+              searchIntent: effectiveSearchIntent,
             },
           };
         }
@@ -1040,6 +1392,7 @@ async function generateChatReply({
               ...synthesized.debug,
               adapter: adapterKey,
               plannedBy: 'search-planner',
+              searchIntent: effectiveSearchIntent,
             },
           };
         }
@@ -1065,6 +1418,7 @@ async function generateChatReply({
             toolKey: plannedExecution.tool.toolKey,
             adapter: adapterKey,
             renderedBy: 'search-planner',
+            searchIntent: effectiveSearchIntent,
           },
         };
       }
@@ -1077,6 +1431,7 @@ async function generateChatReply({
           adapter: adapterKey,
           renderedBy: 'search-planner',
           reason: 'missing_valid_search_tool_call',
+          searchIntent: effectiveSearchIntent,
         },
       };
     }
@@ -1181,6 +1536,14 @@ async function generateChatReply({
       toolContext,
     });
   } catch (error) {
+    if (error?.code === 'TOOL_CONFIRMATION_REQUIRED') {
+      return buildConfirmationRequiredResponse({
+        tool: error.tool || tools.find((item) => item.toolKey === effectiveParsedResponse.tool) || {},
+        toolCall: error.toolCall || effectiveParsedResponse,
+        adapterKey,
+      });
+    }
+
     if (error?.code !== 'TOOL_EXECUTION_DENIED') {
       throw error;
     }

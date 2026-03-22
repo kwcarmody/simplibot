@@ -68,6 +68,229 @@ function validateInvocationInput(input = {}) {
   return '';
 }
 
+const META_EXPLANATION_PATTERNS = [
+  /\bgrounded[_\s-]?facts?\b/i,
+  /\bwhat does .* mean\b/i,
+  /\bhow does .* work\b/i,
+  /\bin this app\b/i,
+  /\bin this system\b/i,
+  /\byour search results\b/i,
+];
+
+const GOVERNMENT_ROLE_PATTERNS = [
+  /\bmayor\b/i,
+  /\battorney general\b/i,
+  /\bgovernor\b/i,
+  /\bsenators?\b/i,
+  /\brepresentatives?\b/i,
+  /\bsecretary of state\b/i,
+  /\btreasurer\b/i,
+  /\bcommissioner\b/i,
+  /\bchief justice\b/i,
+  /\bincumbent\b/i,
+  /\bofficials?\b/i,
+];
+
+const STABLE_FACT_PATTERNS = [
+  /\bwho was\b/i,
+  /\bwhat was\b/i,
+  /\bwhen was\b/i,
+  /\bwhen did\b/i,
+  /\bwhere was\b/i,
+  /\bwhere did\b/i,
+  /\bhistory of\b/i,
+  /\bdefinition of\b/i,
+  /\bmeaning of\b/i,
+  /\bexplain\b/i,
+  /\bwhy did\b/i,
+  /\bhow did\b/i,
+  /\borigin of\b/i,
+  /\bwhat happened in\b/i,
+];
+
+const CURRENTNESS_PATTERNS = [
+  /\bcurrent\b/i,
+  /\blatest\b/i,
+  /\brecent\b/i,
+  /\bright now\b/i,
+  /\btoday\b/i,
+  /\bthis weekend\b/i,
+  /\bthis week\b/i,
+  /\btonight\b/i,
+  /\bupcoming\b/i,
+];
+
+function looksLikeInternalMetaQuery(value) {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) {
+    return false;
+  }
+
+  return META_EXPLANATION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function looksLikeGovernmentOfficialQuery(value) {
+  return GOVERNMENT_ROLE_PATTERNS.some((pattern) => pattern.test(String(value || '')));
+}
+
+function looksLikeEncyclopedicFactQuery(value) {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) {
+    return false;
+  }
+
+  if (looksLikeInternalMetaQuery(normalized) || isGreetingOnly(normalized) || isPersonalOrMetaQuestion(normalized)) {
+    return false;
+  }
+
+  return [
+    /\bwho is\b/i,
+    /\bwhat is\b/i,
+    /\bwhat are\b/i,
+    /\btell me about\b/i,
+    /\binformation about\b/i,
+    /\bbackground on\b/i,
+    /\bcurrent\b/i,
+    /\bincumbent\b/i,
+    /\bdefinition\b/i,
+    /\bmeaning\b/i,
+    /\bbiography\b/i,
+    /\bhistory of\b/i,
+    /\bwiki(?:pedia)?\b/i,
+  ].some((pattern) => pattern.test(normalized)) || looksLikeGovernmentOfficialQuery(normalized);
+}
+
+function looksLikeStableFactQuery(value) {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) {
+    return false;
+  }
+
+  if (looksLikeInternalMetaQuery(normalized) || CURRENTNESS_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return false;
+  }
+
+  if (STABLE_FACT_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return true;
+  }
+
+  if (/\b(19|20)\d{2}\b/.test(normalized) && !/\b2025\b|\b2026\b|\b2027\b/.test(normalized)) {
+    return true;
+  }
+
+  return false;
+}
+
+function looksLikeRegionalLiveQuery(value) {
+  const normalized = normalizeIntentText(value);
+  if (!normalized) {
+    return false;
+  }
+
+  const timeOrLocalSignals = [
+    /\bthis weekend\b/i,
+    /\bthis week\b/i,
+    /\btoday\b/i,
+    /\btonight\b/i,
+    /\bnear me\b/i,
+    /\bnearby\b/i,
+  ];
+  const liveInfoSignals = [
+    /\bconcerts?\b/i,
+    /\bevents?\b/i,
+    /\bfestivals?\b/i,
+    /\btickets?\b/i,
+    /\bhours?\b/i,
+    /\bschedule\b/i,
+    /\bavailability\b/i,
+    /\bhappening\b/i,
+    /\bthings to do\b/i,
+  ];
+  const locationSignals = [
+    /\bin [a-z]/i,
+    /\bcharlotte\b/i,
+    /\bnorth carolina\b/i,
+  ];
+
+  const hasTimeOrLocalSignal = timeOrLocalSignals.some((pattern) => pattern.test(normalized));
+  const hasLiveInfoSignal = liveInfoSignals.some((pattern) => pattern.test(normalized));
+  const hasLocationSignal = locationSignals.some((pattern) => pattern.test(normalized));
+
+  return (hasLiveInfoSignal && (hasTimeOrLocalSignal || hasLocationSignal)) || (hasTimeOrLocalSignal && hasLocationSignal);
+}
+
+function classifySearchIntent({ latestUserMessage = '', query = '' }) {
+  const basis = String(latestUserMessage || query || '').trim();
+
+  if (!basis) {
+    return {
+      mode: 'not_query',
+      strategy: 'not_query',
+      needsWebSearch: false,
+      shouldPlan: false,
+      label: 'not_query',
+    };
+  }
+
+  if (isGreetingOnly(basis) || isPersonalOrMetaQuestion(basis)) {
+    return {
+      mode: 'not_query',
+      strategy: 'not_query',
+      needsWebSearch: false,
+      shouldPlan: false,
+      label: 'not_query',
+    };
+  }
+
+  if (looksLikeInternalMetaQuery(basis)) {
+    return {
+      mode: 'internal_meta',
+      strategy: 'internal_meta',
+      needsWebSearch: false,
+      shouldPlan: true,
+      label: 'internal_meta',
+    };
+  }
+
+  if (looksLikeStableFactQuery(basis)) {
+    return {
+      mode: 'known_static',
+      strategy: 'known_static',
+      needsWebSearch: false,
+      shouldPlan: true,
+      label: 'known_static',
+    };
+  }
+
+  if (looksLikeEncyclopedicFactQuery(basis)) {
+    return {
+      mode: 'encyclopedic_fact',
+      strategy: 'factual_reference',
+      needsWebSearch: true,
+      shouldPlan: true,
+      label: 'encyclopedic_fact',
+    };
+  }
+
+  if (looksLikeRegionalLiveQuery(basis)) {
+    return {
+      mode: 'regional_live',
+      strategy: 'current_or_regional',
+      needsWebSearch: true,
+      shouldPlan: true,
+      label: 'regional_live',
+    };
+  }
+
+  return {
+    mode: 'general_web',
+    strategy: hasStrongSearchIntent(basis) ? 'current_or_regional' : 'not_query',
+    needsWebSearch: hasStrongSearchIntent(basis),
+    shouldPlan: hasStrongSearchIntent(basis),
+    label: 'general_web',
+  };
+}
+
 function normalizeIntentText(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -137,12 +360,16 @@ function hasStrongSearchIntent(value) {
 function shouldAutoExecute({ latestUserMessage, input = {} }) {
   const latestMessage = String(latestUserMessage || '').trim();
   const query = String(input.query || '').trim();
+  const intent = classifySearchIntent({
+    latestUserMessage,
+    query,
+  });
 
   if (isGreetingOnly(latestMessage) || isPersonalOrMetaQuestion(latestMessage)) {
     return false;
   }
 
-  if (!hasStrongSearchIntent(latestMessage) && !hasStrongSearchIntent(query)) {
+  if (!intent.needsWebSearch) {
     return false;
   }
 
@@ -154,6 +381,27 @@ function resolveSearchEndpoint(baseUrl) {
   return /\/res\/v1\/web\/search$/i.test(normalizedBaseUrl)
     ? normalizedBaseUrl
     : `${normalizedBaseUrl}/res/v1/web/search`;
+}
+
+function isWikipediaSource(value = '') {
+  return String(value || '').toLowerCase() === 'en.wikipedia.org';
+}
+
+function buildEffectiveSearchQuery(query = '', searchMode = 'general_web') {
+  const normalizedQuery = String(query || '').trim();
+  if (!normalizedQuery) {
+    return '';
+  }
+
+  if (searchMode !== 'encyclopedic_fact') {
+    return normalizedQuery;
+  }
+
+  if (/\bsite:wikipedia\.org\b/i.test(normalizedQuery) || /\bwikipedia\b/i.test(normalizedQuery)) {
+    return normalizedQuery;
+  }
+
+  return `${normalizedQuery} site:wikipedia.org`;
 }
 
 function buildEvidenceLines(result = {}) {
@@ -201,7 +449,11 @@ function summarizeEvidence(text) {
   }
 
   const firstSentence = normalized.split(/(?<=[.!?])\s+/)[0] || normalized;
-  return firstSentence.trim();
+  if (firstSentence.trim().length >= 24) {
+    return firstSentence.trim();
+  }
+
+  return normalized;
 }
 
 function shortenEvidence(text, maxLength = 180) {
@@ -274,8 +526,11 @@ function dedupeGroundedFacts(facts = []) {
   });
 }
 
-function extractGroundedFacts({ query = '', latestUserMessage = '', results = [] }) {
-  const personQuery = looksLikePersonQuery(latestUserMessage) || looksLikePersonQuery(query) || looksLikePersonName(query);
+function extractGroundedFacts({ query = '', latestUserMessage = '', results = [], searchMode = 'general_web' }) {
+  const personQuery = looksLikePersonQuery(latestUserMessage)
+    || looksLikePersonQuery(query)
+    || looksLikePersonName(query)
+    || searchMode === 'encyclopedic_fact';
 
   return results
     .map((item) => {
@@ -306,14 +561,209 @@ function extractGroundedFacts({ query = '', latestUserMessage = '', results = []
 function buildGroundedResult({ result, latestUserMessage = '' }) {
   const query = String(result?.query || latestUserMessage || '').trim();
   const results = Array.isArray(result?.results) ? result.results : [];
-  const groundedFacts = dedupeGroundedFacts(extractGroundedFacts({ query, latestUserMessage, results }));
+  const searchMode = String(
+    result?.searchMode
+    || classifySearchIntent({
+      latestUserMessage,
+      query,
+    }).mode
+    || 'general_web'
+  ).trim();
+  const groundedFacts = dedupeGroundedFacts(extractGroundedFacts({
+    query,
+    latestUserMessage,
+    results,
+    searchMode,
+  }));
 
   return {
     query,
+    searchMode,
     resultCount: Number(result?.resultCount || results.length || 0),
     groundedFacts,
     confidence: groundedFacts.length ? 'partial' : 'low',
   };
+}
+
+function selectWikipediaFacts(groundedFacts = [], query = '') {
+  const wikiFacts = groundedFacts.filter((fact) => isWikipediaSource(fact.source));
+  if (!wikiFacts.length) {
+    return [];
+  }
+
+  const queryWords = getQueryWords(query);
+
+  return [...wikiFacts].sort((left, right) => {
+    const leftText = `${left.title} ${left.evidence}`.toLowerCase();
+    const rightText = `${right.title} ${right.evidence}`.toLowerCase();
+    const leftScore = queryWords.filter((word) => leftText.includes(word)).length
+      + (/currently held by|serving as|current president|current mayor|current attorney general/i.test(left.evidence) ? 6 : 0)
+      + (/^who is\b|current\b|mayor\b|president\b|attorney general\b/i.test(query) && /\bmayor of|president of|attorney general\b/i.test(left.title) ? 4 : 0)
+      - (/^category:/i.test(left.title) ? 8 : 0)
+      - (/\bmay refer to\b/i.test(left.evidence) ? 7 : 0)
+      - (/\bcategory:/i.test(left.title) ? 5 : 0);
+    const rightScore = queryWords.filter((word) => rightText.includes(word)).length
+      + (/currently held by|serving as|current president|current mayor|current attorney general/i.test(right.evidence) ? 6 : 0)
+      + (/^who is\b|current\b|mayor\b|president\b|attorney general\b/i.test(query) && /\bmayor of|president of|attorney general\b/i.test(right.title) ? 4 : 0)
+      - (/^category:/i.test(right.title) ? 8 : 0)
+      - (/\bmay refer to\b/i.test(right.evidence) ? 7 : 0)
+      - (/\bcategory:/i.test(right.title) ? 5 : 0);
+
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+
+    const leftListPage = /\b(list of|history of)\b/i.test(left.title) ? 1 : 0;
+    const rightListPage = /\b(list of|history of)\b/i.test(right.title) ? 1 : 0;
+    if (leftListPage !== rightListPage) {
+      return leftListPage - rightListPage;
+    }
+
+    return normalizeText(left.title).localeCompare(normalizeText(right.title));
+  });
+}
+
+function rankFactSource(fact = {}) {
+  const source = String(fact.source || '').toLowerCase();
+
+  if (source.endsWith('.gov') || source.includes('.gov.')) {
+    return 0;
+  }
+  if (source === 'en.wikipedia.org') {
+    return 1;
+  }
+  if (source.includes('ballotpedia.org')) {
+    return 2;
+  }
+  if (source.includes('britannica.com') || source.includes('encyclopedia.com')) {
+    return 3;
+  }
+
+  return 4;
+}
+
+function orderFactsForMode(groundedFacts = [], searchMode = 'general_web') {
+  const facts = [...groundedFacts];
+
+  if (searchMode !== 'encyclopedic_fact') {
+    return facts;
+  }
+
+  return facts.sort((left, right) => {
+    const sourceDelta = rankFactSource(left) - rankFactSource(right);
+    if (sourceDelta !== 0) {
+      return sourceDelta;
+    }
+
+    return normalizeText(left.title).localeCompare(normalizeText(right.title));
+  });
+}
+
+function extractCandidateNames(text = '') {
+  const matches = String(text || '').match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/g) || [];
+  const blocked = new Set([
+    'North Carolina',
+    'Charlotte North',
+    'City Government',
+    'City Of Charlotte',
+    'Attorney General',
+    'General Assembly',
+    'Department Of Justice',
+    'United States Senate',
+    'House Of Representatives',
+  ]);
+
+  return matches.filter((match) => {
+    if (blocked.has(match)) {
+      return false;
+    }
+
+    return !/\b(Wikipedia|Ballotpedia|Facebook|Justice|Department|Mayor|Attorney|General|Government|House|Senate)\b/.test(match);
+  });
+}
+
+function findConsensusName(groundedFacts = []) {
+  const counts = new Map();
+
+  groundedFacts.slice(0, 4).forEach((fact) => {
+    const candidates = [
+      ...extractCandidateNames(fact.title),
+      ...extractCandidateNames(fact.evidence),
+    ];
+
+    candidates.forEach((name) => {
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+  });
+
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] || '';
+}
+
+function extractDirectAnswerFromFact(fact = {}) {
+  const evidence = String(fact.evidence || '').trim();
+  if (!evidence) {
+    return '';
+  }
+
+  const patterns = [
+    /currently held by (?:democrat\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})/i,
+    /current president of the united states is ([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})/i,
+    /current attorney general of north carolina is ([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})/i,
+    /serving as the \d+(?:st|nd|rd|th)? mayor of [^.]+ since \d{4}/i,
+    /is an american politician serving as the \d+(?:st|nd|rd|th)? mayor of [^.]+ since \d{4}/i,
+  ];
+
+  const direct = evidence.match(patterns[0]) || evidence.match(patterns[1]) || evidence.match(patterns[2]);
+  if (direct?.[1]) {
+    return normalizeText(direct[1]);
+  }
+
+  if (patterns[3].test(evidence) || patterns[4].test(evidence)) {
+    return extractCandidateNames(evidence)[0] || '';
+  }
+
+  return '';
+}
+
+function formatEncyclopedicAnswer({ query, groundedFacts }) {
+  if (!groundedFacts.length) {
+    return `I couldn't confidently confirm a factual answer for "${query}" from the available sources. If you want, I can try a narrower reference-style search.`;
+  }
+
+  const wikipediaFacts = selectWikipediaFacts(groundedFacts, query);
+  const orderedFacts = orderFactsForMode(groundedFacts, 'encyclopedic_fact');
+  const topFacts = (wikipediaFacts.length ? wikipediaFacts : orderedFacts).slice(0, 3);
+  const primaryFact = topFacts[0] || null;
+  const directAnswer = extractDirectAnswerFromFact(primaryFact || {});
+  const consensusName = directAnswer || findConsensusName(topFacts);
+  const lines = [];
+
+  if (consensusName) {
+    lines.push(`${consensusName} appears to be the answer for "${query}" based on the strongest reference result${topFacts.length > 1 ? 's' : ''}.`);
+  } else {
+    lines.push(wikipediaFacts.length
+      ? `Here are the most likely Wikipedia article matches for "${query}":`
+      : `Here are the strongest factual sources I found for "${query}":`);
+  }
+
+  lines.push('');
+
+  topFacts.forEach((fact) => {
+    const parts = [`- ${fact.title}`];
+    if (fact.evidence) {
+      parts.push(`  ${shortenEvidence(fact.evidence)}`);
+    }
+    if (fact.source) {
+      parts.push(`  Source: ${fact.source}`);
+    }
+    if (fact.url) {
+      parts.push(`  Link: ${fact.url}`);
+    }
+    lines.push(parts.join('\n'));
+  });
+
+  return lines.join('\n');
 }
 
 function formatPersonAnswer({ query, groundedFacts }) {
@@ -321,7 +771,7 @@ function formatPersonAnswer({ query, groundedFacts }) {
     return `I couldn't confidently identify who "${query}" refers to from the available search results. If you want, give me a profession, company, or location and I can narrow it down.`;
   }
 
-  const displayFacts = groundedFacts.slice(0, 4);
+  const displayFacts = orderFactsForMode(groundedFacts, 'encyclopedic_fact').slice(0, 4);
   const intro = displayFacts.length > 1
     ? `I found multiple people or profiles that may match "${query}":`
     : `I found this likely match for "${query}":`;
@@ -338,9 +788,8 @@ function formatPersonAnswer({ query, groundedFacts }) {
     }
     return parts.join('\n');
   });
-
   const outro = displayFacts.length > 1
-    ? '\nIf you meant a specific Kevin Carmody, tell me which field or company and I can narrow it down.'
+    ? '\nIf you meant a different person with a similar name or title, tell me which field or organization and I can narrow it down.'
     : '';
 
   return [intro, '', ...bullets, outro].filter(Boolean).join('\n');
@@ -436,6 +885,11 @@ function formatGenericAnswer({ query, groundedFacts }) {
 function formatResultForAssistant({ result, latestUserMessage = '' }) {
   const grounded = buildGroundedResult({ result, latestUserMessage });
   const query = grounded.query || String(latestUserMessage || '').trim();
+  const searchMode = grounded.searchMode || 'general_web';
+
+  if (searchMode === 'encyclopedic_fact') {
+    return formatEncyclopedicAnswer({ query, groundedFacts: grounded.groundedFacts });
+  }
 
   if (looksLikePersonQuery(latestUserMessage) || looksLikePersonQuery(query)) {
     return formatPersonAnswer({ query, groundedFacts: grounded.groundedFacts });
@@ -452,7 +906,7 @@ function formatResultForAssistant({ result, latestUserMessage = '' }) {
   return formatGenericAnswer({ query, groundedFacts: grounded.groundedFacts });
 }
 
-async function execute({ input = {}, config = {} }) {
+async function execute({ input = {}, config = {}, latestUserMessage = '' }) {
   const normalizedConfig = normalizeConfig(config);
   const configError = validateConfig(normalizedConfig);
   if (configError) {
@@ -465,8 +919,17 @@ async function execute({ input = {}, config = {} }) {
   }
 
   const query = String(input.query || '').trim();
+  const searchMode = String(
+    input.searchMode
+    || classifySearchIntent({
+      latestUserMessage,
+      query,
+    }).mode
+    || 'general_web'
+  ).trim();
+  const effectiveQuery = buildEffectiveSearchQuery(query, searchMode);
   const endpoint = new URL(resolveSearchEndpoint(normalizedConfig.baseUrl));
-  endpoint.searchParams.set('q', query);
+  endpoint.searchParams.set('q', effectiveQuery);
   endpoint.searchParams.set('count', '5');
   endpoint.searchParams.set('extra_snippets', 'true');
   endpoint.searchParams.set('safesearch', 'moderate');
@@ -489,6 +952,8 @@ async function execute({ input = {}, config = {} }) {
 
   return {
     query,
+    effectiveQuery,
+    searchMode,
     provider: normalizedConfig.provider,
     resultCount: results.length,
     results: results.map((result) => ({
@@ -508,6 +973,7 @@ async function execute({ input = {}, config = {} }) {
 }
 
 module.exports = {
+  classifySearchIntent,
   buildGroundedResult,
   execute,
   formatResultForAssistant,
